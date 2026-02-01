@@ -15,7 +15,7 @@ function HeaderMark({ emoji, size = 'md' }: { emoji: string; size?: 'sm' | 'md' 
   return (
     <div
       className={cx(
-        'relative grid place-items-center rounded-2xl border border-white/60 bg-[radial-gradient(80%_80%_at_30%_20%,rgba(98,110,255,0.22),transparent_55%),radial-gradient(90%_90%_at_90%_70%,rgba(62,197,200,0.20),transparent_55%),rgba(255,255,255,0.85)] shadow-lg shadow-black/5 backdrop-blur',
+        'relative grid place-items-center rounded-xl border border-white/60 bg-[radial-gradient(80%_80%_at_30%_20%,rgba(98,110,255,0.22),transparent_55%),radial-gradient(90%_90%_at_90%_70%,rgba(62,197,200,0.20),transparent_55%),rgba(255,255,255,0.85)] shadow-none backdrop-blur-none md:rounded-2xl md:shadow-lg md:shadow-black/5 md:backdrop-blur',
         box,
       )}
     >
@@ -36,7 +36,7 @@ export function Card({
     <div
       {...props}
       className={cx(
-        'rounded-2xl border border-white/60 bg-[rgba(255,255,255,0.78)] shadow-lg shadow-black/5 backdrop-blur transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/10 active:translate-y-0',
+        'rounded-xl border border-[rgb(var(--nefera-border))] bg-white shadow-none backdrop-blur-none transition-all duration-200 ease-out md:rounded-2xl md:border-white/60 md:bg-[rgba(255,255,255,0.78)] md:shadow-lg md:shadow-black/5 md:backdrop-blur md:hover:-translate-y-0.5 md:hover:shadow-xl md:hover:shadow-black/10 active:translate-y-0',
         className,
       )}
     >
@@ -57,7 +57,7 @@ export function CardHeader({
   emoji?: string
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-6 pb-0">
+    <div className="flex items-start justify-between gap-4 p-4 pb-0 md:p-6">
       <div className="flex min-w-0 items-start gap-4">
         {emoji ? <HeaderMark emoji={emoji} size="sm" /> : null}
         <div className="min-w-0 pt-0.5">
@@ -71,7 +71,7 @@ export function CardHeader({
 }
 
 export function CardBody({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cx('p-6 pt-5', className)}>{children}</div>
+  return <div className={cx('p-4 pt-4 md:p-6 md:pt-5', className)}>{children}</div>
 }
 
 export function Button({
@@ -85,16 +85,16 @@ export function Button({
   size?: 'sm' | 'md'
 }) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-2xl font-semibold transition-all duration-200 ease-out active:translate-y-px active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50'
+    'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-all duration-200 ease-out active:translate-y-px active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 md:rounded-2xl'
   const sizes = size === 'sm' ? 'h-11 px-4 text-sm' : 'h-11 px-5 text-sm'
   const variants = {
     primary:
-      'bg-[linear-gradient(135deg,rgb(var(--nefera-brand)),rgb(var(--nefera-brand-2)))] text-white shadow-lg shadow-[rgba(98,110,255,0.22)] ring-0 ring-[rgba(98,110,255,0.18)] hover:brightness-[0.99] hover:shadow-xl hover:shadow-[rgba(98,110,255,0.22)] hover:ring-4',
+      'bg-[linear-gradient(135deg,rgb(var(--nefera-brand)),rgb(var(--nefera-brand-2)))] text-white shadow-none ring-0 ring-[rgba(98,110,255,0.18)] md:shadow-lg md:shadow-[rgba(98,110,255,0.22)] md:hover:brightness-[0.99] md:hover:shadow-xl md:hover:shadow-[rgba(98,110,255,0.22)] md:hover:ring-4',
     secondary:
-      'border border-white/70 bg-white/65 text-[rgb(var(--nefera-ink))] shadow-lg shadow-black/5 hover:bg-white/80 hover:shadow-xl hover:shadow-black/5',
+      'border border-[rgb(var(--nefera-border))] bg-white text-[rgb(var(--nefera-ink))] shadow-none md:border-white/70 md:bg-white/65 md:shadow-lg md:shadow-black/5 md:hover:bg-white/80 md:hover:shadow-xl md:hover:shadow-black/5',
     ghost: 'border border-white/70 bg-transparent text-[rgb(var(--nefera-ink))] hover:bg-white/60',
     danger:
-      'bg-[linear-gradient(135deg,rgb(var(--nefera-danger)),rgba(244,63,94,0.78))] text-white shadow-lg shadow-[rgba(244,63,94,0.18)] hover:brightness-[0.99] hover:shadow-xl hover:shadow-[rgba(244,63,94,0.14)]',
+      'bg-[linear-gradient(135deg,rgb(var(--nefera-danger)),rgba(244,63,94,0.78))] text-white shadow-none md:shadow-lg md:shadow-[rgba(244,63,94,0.18)] md:hover:brightness-[0.99] md:hover:shadow-xl md:hover:shadow-[rgba(244,63,94,0.14)]',
   } satisfies Record<string, string>
 
   return (
@@ -115,7 +115,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cx(
-        'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[rgb(var(--nefera-border))] bg-[rgb(var(--nefera-surface))] text-[rgb(var(--nefera-ink))] shadow-sm shadow-black/5 transition hover:bg-black/5 active:scale-[0.99]',
+        'inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[rgb(var(--nefera-border))] bg-[rgb(var(--nefera-surface))] text-[rgb(var(--nefera-ink))] shadow-none transition hover:bg-black/5 active:scale-[0.99] md:rounded-2xl md:shadow-sm md:shadow-black/5',
         className,
       )}
       {...props}
@@ -134,10 +134,10 @@ export function Input({
 }: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: string; inputClassName?: string }) {
   return (
     <label className={cx('block', className)}>
-      {label ? <div className="mb-2 text-sm font-semibold text-[rgb(var(--nefera-ink))]">{label}</div> : null}
+      {label ? <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--nefera-ink))]">{label}</div> : null}
       <input
         className={cx(
-          'h-12 w-full rounded-2xl border border-white/70 bg-white/80 px-4 text-sm text-[rgb(var(--nefera-ink))] outline-none shadow-lg shadow-black/5 ring-[rgba(98,110,255,0.20)] focus:bg-white focus:ring-4',
+          'h-12 w-full rounded-xl border border-[rgb(var(--nefera-border))] bg-white px-3 text-sm text-[rgb(var(--nefera-ink))] outline-none shadow-none ring-[rgba(98,110,255,0.20)] focus:ring-4 md:rounded-2xl md:border-white/70 md:bg-white/80 md:px-4 md:shadow-lg md:shadow-black/5 md:focus:bg-white',
           inputClassName,
         )}
         {...props}
@@ -156,10 +156,10 @@ export function TextArea({
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; hint?: string; inputClassName?: string }) {
   return (
     <label className={cx('block', className)}>
-      {label ? <div className="mb-2 text-sm font-semibold text-[rgb(var(--nefera-ink))]">{label}</div> : null}
+      {label ? <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--nefera-ink))]">{label}</div> : null}
       <textarea
         className={cx(
-          'min-h-28 w-full resize-none rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm text-[rgb(var(--nefera-ink))] outline-none shadow-lg shadow-black/5 ring-[rgba(98,110,255,0.20)] focus:bg-white focus:ring-4',
+          'min-h-32 w-full resize-none rounded-xl border border-[rgb(var(--nefera-border))] bg-white px-3 py-3 text-sm text-[rgb(var(--nefera-ink))] outline-none shadow-none ring-[rgba(98,110,255,0.20)] focus:ring-4 md:rounded-2xl md:border-white/70 md:bg-white/80 md:px-4 md:shadow-lg md:shadow-black/5 md:focus:bg-white',
           inputClassName,
         )}
         {...props}
@@ -190,7 +190,7 @@ export function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-11 w-full rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-4 text-sm text-[rgb(var(--nefera-ink))] outline-none ring-[rgba(98,110,255,0.22)] focus:ring-4"
+        className="h-12 w-full rounded-xl border border-[rgb(var(--nefera-border))] bg-white px-3 text-sm text-[rgb(var(--nefera-ink))] outline-none ring-[rgba(98,110,255,0.22)] focus:ring-4 md:rounded-2xl md:px-4"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -219,7 +219,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       className={cx(
-        'inline-flex min-h-11 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition active:scale-[0.99]',
+        'inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition active:scale-[0.99] md:rounded-2xl md:px-4',
         selected
           ? 'border-[rgba(98,110,255,0.35)] bg-[rgba(98,110,255,0.12)] text-[rgb(var(--nefera-ink))]'
           : 'border-[rgb(var(--nefera-border))] bg-white text-[rgb(var(--nefera-ink))] hover:bg-black/5',
@@ -289,7 +289,7 @@ export function PageContainer({ children, className }: { children: React.ReactNo
   return (
     <div
       className={cx(
-        'mx-auto w-full max-w-[480px] px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] motion-reduce:animate-none animate-[nefera-page-in_260ms_ease-out] min-h-[100dvh] md:max-w-6xl md:px-8 md:pb-10 md:pt-7',
+        'mx-auto w-full max-w-[480px] px-3 pb-[calc(9rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] motion-reduce:animate-none animate-[nefera-page-in_260ms_ease-out] min-h-[100dvh] md:max-w-6xl md:px-8 md:pb-10 md:pt-7',
         className,
       )}
     >
@@ -479,7 +479,12 @@ export function StepperHeader({
   className?: string
 }) {
   return (
-    <div className={cx('rounded-2xl border border-white/70 bg-white/60 p-5 shadow-lg shadow-black/5 backdrop-blur', className)}>
+    <div
+      className={cx(
+        'rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-5 shadow-none backdrop-blur-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5 md:backdrop-blur',
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
           {left ? <div className="shrink-0">{left}</div> : null}
@@ -587,14 +592,14 @@ export function FAB({
 
   if (to) {
     return (
-      <Link to={to} className="fixed bottom-24 right-4 z-40 md:bottom-6 md:right-6">
+      <Link to={to} className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 md:bottom-6 md:right-6">
         {btn}
       </Link>
     )
   }
 
   return (
-    <div className="fixed bottom-24 right-4 z-40 md:bottom-6 md:right-6">
+    <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 md:bottom-6 md:right-6">
       <button type="button" onClick={onClick}>
         {btn}
       </button>
@@ -636,10 +641,10 @@ export function Page({
         )}
         {children}
         {right ? (
-          <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 md:hidden">
-            <div className="mx-auto w-full max-w-[480px] px-4">
-              <div className="min-h-14 rounded-3xl border border-white/70 bg-[rgba(255,255,255,0.86)] px-3 py-3 shadow-xl shadow-black/10 backdrop-blur">
-                <div className="flex items-center justify-end gap-2">{right}</div>
+          <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 md:hidden">
+            <div className="mx-auto w-full max-w-[480px] px-3">
+              <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+                <div className="flex items-center gap-2">{right}</div>
               </div>
             </div>
           </div>
@@ -695,7 +700,7 @@ export function Modal({
         ref={panelRef}
         tabIndex={-1}
         className={cx(
-          'relative w-full max-h-[calc(100dvh-6rem)] overflow-auto rounded-t-3xl border border-white/60 bg-[rgba(255,255,255,0.92)] shadow-xl shadow-black/15 outline-none backdrop-blur animate-[nefera-fade-up_180ms_ease-out] md:max-h-[calc(100dvh-4rem)] md:rounded-2xl',
+          'relative w-full max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-t-3xl border border-white/60 bg-[rgba(255,255,255,0.92)] shadow-xl shadow-black/15 outline-none backdrop-blur animate-[nefera-fade-up_180ms_ease-out] md:max-h-[calc(100dvh-4rem)] md:rounded-2xl',
           width,
         )}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}

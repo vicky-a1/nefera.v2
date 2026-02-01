@@ -193,11 +193,11 @@ function AppShell() {
 
       <div className="md:hidden">
         <div
-          className="sticky top-0 z-30 border-b border-white/60 bg-[rgba(255,255,255,0.74)] backdrop-blur"
-          style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))', paddingBottom: '0.75rem' }}
+          className="sticky top-0 z-30 border-b border-[rgb(var(--nefera-border))] bg-white"
+          style={{ height: 'calc(3.5rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
         >
-          <div className="mx-auto w-full max-w-[480px] px-4">
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div className="mx-auto w-full max-w-[480px] px-3">
+            <div className="grid h-14 grid-cols-[1fr_auto_1fr] items-center gap-2">
               <div className="flex items-center">
                 <img src={logo} alt="Nefera Logo" className="h-9 w-auto object-contain" />
               </div>
@@ -215,27 +215,27 @@ function AppShell() {
             </div>
           </div>
         </div>
-        <main className="pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
+        <main className="pb-[calc(4rem+env(safe-area-inset-bottom))]">
           <Outlet />
         </main>
         <div
-          className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/60 bg-[rgba(255,255,255,0.82)] px-2 pt-2 backdrop-blur"
-          style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-[rgb(var(--nefera-border))] bg-white"
+          style={{ height: 'calc(4rem + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          <div className="mx-auto grid max-w-[480px] grid-cols-4 gap-2">
+          <div className="mx-auto grid h-16 max-w-[480px] grid-cols-4 gap-1 px-3">
             {nav.slice(0, 4).map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
                 className={cx(
-                  'flex min-h-12 flex-col items-center justify-center rounded-2xl border px-2 py-2.5 text-xs font-semibold transition-all duration-200 ease-out active:translate-y-px',
+                  'flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold text-[rgb(var(--nefera-muted))] transition-all duration-200 ease-out active:translate-y-px',
                   active === item.to
-                    ? 'border-white/70 bg-white/75 text-[rgb(var(--nefera-ink))] shadow-lg shadow-black/5'
-                    : 'border-transparent text-[rgb(var(--nefera-muted))] hover:border-white/60 hover:bg-white/55',
+                    ? 'bg-[rgba(98,110,255,0.14)] text-[rgb(var(--nefera-ink))]'
+                    : 'hover:bg-black/5',
                 )}
               >
-                <div className="text-lg leading-none">{item.emoji}</div>
-                <div className="mt-1">{item.label}</div>
+                <div className="text-xl leading-none">{item.emoji}</div>
+                <div className="leading-none">{item.label}</div>
               </Link>
             ))}
           </div>
@@ -501,15 +501,15 @@ function StudentDashboard() {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/70 bg-white/70 p-3 text-center shadow-lg shadow-black/5">
+            <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-3 text-center shadow-none md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Day streak</div>
               <div className="mt-1 text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{dayStreak}</div>
             </div>
-            <div className="rounded-2xl border border-white/70 bg-white/70 p-3 text-center shadow-lg shadow-black/5">
+            <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-3 text-center shadow-none md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Active days</div>
               <div className="mt-1 text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{totalActiveDays}</div>
             </div>
-            <div className="rounded-2xl border border-white/70 bg-white/70 p-3 text-center shadow-lg shadow-black/5">
+            <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-3 text-center shadow-none md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Journal streak</div>
               <div className="mt-1 text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{journalStreak}</div>
             </div>
@@ -519,7 +519,7 @@ function StudentDashboard() {
       <Card>
         <CardBody className="space-y-4">
           {feelingHint.show ? (
-            <div className="flex items-start justify-between gap-4 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-lg shadow-black/5">
+            <div className="flex items-start justify-between gap-4 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5">
               <div className="min-w-0">
                 <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">Tip</div>
                 <div className="mt-1 text-sm leading-6 text-[rgb(var(--nefera-muted))]">
@@ -551,7 +551,7 @@ function StudentDashboard() {
           </div>
         </CardBody>
       </Card>
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <div className="mt-5 space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         <Card>
           <CardBody className="space-y-4">
             <Section title="Your space" subtitle="Gentle tools designed for real school days." />
@@ -581,7 +581,7 @@ function StudentDashboard() {
             return (
               <>
                 <ChartCard title="Weekly feeling distribution" subtitle="Last 7 days">
-                  <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+                  <div className="grid place-items-center rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-6 shadow-none md:border-white/70 md:bg-white/55 md:shadow-lg md:shadow-black/5">
                     <DonutChart size={168} stroke={18} segments={segments} />
                   </div>
                   <ChartLegend segments={segments} />
@@ -698,20 +698,20 @@ function StudentCheckInFlow() {
         </Card>
       </div>
 
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
                 Back
               </Button>
               {step < steps.length - 1 ? (
-                <Button className="min-w-28" disabled={!canContinue} onClick={() => setStep((s) => s + 1)}>
+                <Button className="h-14 w-full" disabled={!canContinue} onClick={() => setStep((s) => s + 1)}>
                   Next
                 </Button>
               ) : (
                 <Button
-                  className="min-w-28"
+                  className="h-14 w-full"
                   disabled={!canContinue}
                   onClick={() => {
                     dispatch({
@@ -809,14 +809,14 @@ function StudentSleepTracker() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/student/dashboard', { replace: true })}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/student/dashboard', { replace: true })}>
                 Skip
               </Button>
-              <Button className="min-w-28" onClick={onSave}>
+              <Button className="h-14 w-full" onClick={onSave}>
                 Save
               </Button>
             </div>
@@ -1020,14 +1020,14 @@ function StudentJournalWrite() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/student/dashboard')}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/student/dashboard')}>
                 Cancel
               </Button>
-              <Button className="min-w-32" disabled={!canSave} onClick={onSave}>
+              <Button className="h-14 w-full" disabled={!canSave} onClick={onSave}>
                 {isEdit ? 'Update' : 'Save'}
               </Button>
             </div>
@@ -1165,14 +1165,14 @@ function StudentGratitude() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/student/dashboard', { replace: true })}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/student/dashboard', { replace: true })}>
                 Close
               </Button>
-              <Button className="min-w-32" disabled={!canSave} onClick={onSave}>
+              <Button className="h-14 w-full" disabled={!canSave} onClick={onSave}>
                 Save
               </Button>
             </div>
@@ -1637,11 +1637,11 @@ function StudentReportIncident() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-end gap-2">
-              <Button className="min-w-40" disabled={!canSubmit} onClick={() => setConfirm(true)}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid gap-2">
+              <Button className="h-14 w-full" disabled={!canSubmit} onClick={() => setConfirm(true)}>
                 Submit report
               </Button>
             </div>
@@ -1717,7 +1717,23 @@ function StudentHelpBatchmates() {
   const totalChecked = Object.values({ ...anxiety, ...depression, ...risk }).filter(Boolean).length
 
   return (
-    <Page emoji="🫂" title="Help batchmates" subtitle="A quick checklist to notice when a friend might need extra support.">
+    <Page
+      emoji="🫂"
+      title="Help batchmates"
+      subtitle="A quick checklist to notice when a friend might need extra support."
+      right={
+        <div className="flex w-full gap-2">
+          <Link to="/student/inbox" className="flex-1">
+            <Button className="h-14 w-full" variant="secondary">
+              Message staff 💬
+            </Button>
+          </Link>
+          <Button className="h-14 w-full flex-1" onClick={() => setToast(true)}>
+            Save checklist
+          </Button>
+        </div>
+      }
+    >
       <div className="grid gap-3 md:grid-cols-3">
         {sections.map((s) => (
           <ChecklistGroup
@@ -1738,16 +1754,7 @@ function StudentHelpBatchmates() {
               Checked {totalChecked} sign{totalChecked === 1 ? '' : 's'}. If risk signs are present, tell a trusted adult immediately.
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/student/inbox">
-              <Button variant="secondary" size="sm">
-                Message staff 💬
-              </Button>
-            </Link>
-            <Button size="sm" onClick={() => setToast(true)}>
-              Save checklist
-            </Button>
-          </div>
+          <div className="hidden" />
         </CardBody>
       </Card>
       <Toast open={toast} message="Saved. You’re a good friend." onClose={() => setToast(false)} />
@@ -1775,7 +1782,21 @@ function TeacherObservationChecklist() {
   const studentLabel = params.id ? `Student ${params.id}` : 'Student'
 
   return (
-    <Page emoji="🧑‍🏫" title="Teacher observation" subtitle={`A quick checklist for ${studentLabel}.`}>
+    <Page
+      emoji="🧑‍🏫"
+      title="Teacher observation"
+      subtitle={`A quick checklist for ${studentLabel}.`}
+      right={
+        <div className="flex w-full gap-2">
+          <Button className="h-14 w-full flex-1" variant="secondary" onClick={() => setValues({})}>
+            Clear
+          </Button>
+          <Button className="h-14 w-full flex-1" onClick={() => setToast(true)}>
+            Save observation
+          </Button>
+        </div>
+      }
+    >
       <div className="space-y-3">
         <ChecklistGroup
           title="🧾 Observation checklist"
@@ -1789,14 +1810,7 @@ function TeacherObservationChecklist() {
             <div className="min-w-0">
               <Section title="Summary" subtitle={`Checked ${checked} item${checked === 1 ? '' : 's'}.`} />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setValues({})}>
-                Clear
-              </Button>
-              <Button size="sm" onClick={() => setToast(true)}>
-                Save observation
-              </Button>
-            </div>
+            <div className="hidden" />
           </CardBody>
         </Card>
       </div>
@@ -1813,7 +1827,23 @@ function ParentObservationChecklist() {
   const totalChecked = Object.values({ ...feelings, ...habits }).filter(Boolean).length
 
   return (
-    <Page emoji="👪" title="Home checklist" subtitle="A gentle way to notice patterns at home.">
+    <Page
+      emoji="👪"
+      title="Home checklist"
+      subtitle="A gentle way to notice patterns at home."
+      right={
+        <div className="flex w-full gap-2">
+          <Link to="/parent/message" className="flex-1">
+            <Button className="h-14 w-full" variant="secondary">
+              Message school 💌
+            </Button>
+          </Link>
+          <Button className="h-14 w-full flex-1" onClick={() => setToast(true)}>
+            Save checklist
+          </Button>
+        </div>
+      }
+    >
       <div className="grid gap-3 md:grid-cols-2">
         <ChecklistGroup
           title="💛 Feelings & connection"
@@ -1835,16 +1865,7 @@ function ParentObservationChecklist() {
           <div className="min-w-0">
             <Section title="Next step" subtitle={`Checked ${totalChecked} item${totalChecked === 1 ? '' : 's'}. Consider a calm chat, then message the school if needed.`} />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/parent/message">
-              <Button variant="secondary" size="sm">
-                Message school 💌
-              </Button>
-            </Link>
-            <Button size="sm" onClick={() => setToast(true)}>
-              Save checklist
-            </Button>
-          </div>
+          <div className="hidden" />
         </CardBody>
       </Card>
       <Toast open={toast} message="Saved. Thank you for checking in." onClose={() => setToast(false)} />
@@ -1936,7 +1957,7 @@ function TeacherDashboard() {
 
   return (
     <Page emoji="🧑‍🏫" title={`Welcome, ${user?.name ?? 'Teacher'}`} subtitle="Class overview and quick actions.">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         <Card>
           <CardHeader emoji="📚" title="Today" subtitle="A quick snapshot to guide support." />
           <CardBody className="grid gap-3 md:grid-cols-2">
@@ -1972,7 +1993,11 @@ function TeacherDashboard() {
         />
         <CardBody className="grid gap-2">
           {students.filter((s) => s.flags !== 'none').slice(0, 6).map((s) => (
-            <Link key={s.id} to={`/teacher/students/${s.id}`} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+            <Link
+              key={s.id}
+              to={`/teacher/students/${s.id}`}
+              className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{s.name}</div>
@@ -2026,14 +2051,14 @@ function TeacherBroadcast() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/teacher/dashboard')}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/teacher/dashboard')}>
                 Cancel
               </Button>
-              <Button className="min-w-28" disabled={!canSend} onClick={onSend}>
+              <Button className="h-14 w-full" disabled={!canSend} onClick={onSend}>
                 Send
               </Button>
             </div>
@@ -2106,7 +2131,7 @@ function ParentDashboard() {
   const child = state.parent.children[0]
   return (
     <Page emoji="👪" title={`Welcome, ${user?.name ?? 'Parent'}`} subtitle="A calm overview and simple next steps.">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         <Card>
           <CardHeader emoji="🧒" title="Child" subtitle="Overview for your child." />
           <CardBody className="space-y-2">
@@ -2133,7 +2158,7 @@ function ParentDashboard() {
         <CardHeader emoji="📨" title="Recent messages" subtitle="Messages you’ve sent to school." />
         <CardBody className="grid gap-2">
           {state.parent.sent.slice(0, 4).map((m) => (
-            <div key={m.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+            <div key={m.id} className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(m.createdAt)}</div>
               <div className="mt-1 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">{m.body}</div>
             </div>
@@ -2179,14 +2204,14 @@ function ParentMessage() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/parent/dashboard')}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/parent/dashboard')}>
                 Cancel
               </Button>
-              <Button className="min-w-28" disabled={!canSend} onClick={onSend}>
+              <Button className="h-14 w-full" disabled={!canSend} onClick={onSend}>
                 Send
               </Button>
             </div>
@@ -2259,11 +2284,11 @@ function ParentReportIncident() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-end gap-2">
-              <Button className="min-w-40" disabled={!canSubmit} onClick={() => setConfirm(true)}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid gap-2">
+              <Button className="h-14 w-full" disabled={!canSubmit} onClick={() => setConfirm(true)}>
                 Submit report
               </Button>
             </div>
@@ -2330,7 +2355,7 @@ function CounselorDashboard() {
 
   return (
     <Page emoji="🧠" title={`Welcome, ${user?.name ?? 'Counselor'}`} subtitle="Prioritize support, follow up, and document care.">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         <Card>
           <CardHeader emoji="🚩" title="Flags" subtitle="Students needing follow-up." />
           <CardBody className="grid gap-3 md:grid-cols-2">
@@ -2377,7 +2402,7 @@ function CounselorDashboard() {
               type="button"
               onClick={() => dispatch({ type: 'counselor/toggleCrisisAction', id: a.id })}
               className={cx(
-                'flex items-start gap-3 rounded-2xl border border-white/70 bg-white/60 p-4 text-left shadow-lg shadow-black/5 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-xl active:translate-y-0',
+                'flex items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-left shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/80 md:hover:shadow-xl md:hover:shadow-black/10',
                 a.done ? 'opacity-70' : '',
               )}
             >
@@ -2527,14 +2552,14 @@ function CounselorBroadcast() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/counselor/dashboard')}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/counselor/dashboard')}>
                 Cancel
               </Button>
-              <Button className="min-w-28" disabled={!canSend} onClick={onSend}>
+              <Button className="h-14 w-full" disabled={!canSend} onClick={onSend}>
                 Send
               </Button>
             </div>
@@ -2572,7 +2597,7 @@ function PrincipalDashboard() {
 
   return (
     <Page emoji="🏫" title={`Welcome, ${user?.name ?? 'Principal'}`} subtitle="School-wide insight and reporting.">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
         <Card>
           <CardHeader emoji="📈" title="Overview" subtitle="High-level signals for the week." />
           <CardBody className="grid gap-3 md:grid-cols-2">
@@ -2599,7 +2624,7 @@ function PrincipalDashboard() {
         <CardHeader emoji="🛡️" title="Latest reports" subtitle="Newest items first." />
         <CardBody className="grid gap-2">
           {reports.slice(0, 6).map((r) => (
-            <div key={r.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+            <div key={r.id} className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{r.type}</div>
                 <Badge tone={r.status === 'resolved' ? 'ok' : r.status === 'reviewing' ? 'warn' : 'neutral'}>{r.status}</Badge>
@@ -2651,14 +2676,14 @@ function PrincipalBroadcast() {
           </div>
         </CardBody>
       </Card>
-      <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-4">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => navigate('/principal/dashboard')}>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
+        <div className="mx-auto w-full max-w-[480px] px-3">
+          <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/principal/dashboard')}>
                 Cancel
               </Button>
-              <Button className="min-w-28" disabled={!canSend} onClick={onSend}>
+              <Button className="h-14 w-full" disabled={!canSend} onClick={onSend}>
                 Send
               </Button>
             </div>
