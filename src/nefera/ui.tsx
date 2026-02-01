@@ -86,7 +86,7 @@ export function Button({
 }) {
   const base =
     'inline-flex items-center justify-center gap-2 rounded-2xl font-semibold transition-all duration-200 ease-out active:translate-y-px active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50'
-  const sizes = size === 'sm' ? 'h-10 px-4 text-sm' : 'h-11 px-5 text-sm'
+  const sizes = size === 'sm' ? 'h-11 px-4 text-sm' : 'h-11 px-5 text-sm'
   const variants = {
     primary:
       'bg-[linear-gradient(135deg,rgb(var(--nefera-brand)),rgb(var(--nefera-brand-2)))] text-white shadow-lg shadow-[rgba(98,110,255,0.22)] ring-0 ring-[rgba(98,110,255,0.18)] hover:brightness-[0.99] hover:shadow-xl hover:shadow-[rgba(98,110,255,0.22)] hover:ring-4',
@@ -115,7 +115,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cx(
-        'inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[rgb(var(--nefera-border))] bg-[rgb(var(--nefera-surface))] text-[rgb(var(--nefera-ink))] shadow-sm shadow-black/5 transition hover:bg-black/5 active:scale-[0.99]',
+        'inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[rgb(var(--nefera-border))] bg-[rgb(var(--nefera-surface))] text-[rgb(var(--nefera-ink))] shadow-sm shadow-black/5 transition hover:bg-black/5 active:scale-[0.99]',
         className,
       )}
       {...props}
@@ -219,7 +219,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       className={cx(
-        'inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition active:scale-[0.99]',
+        'inline-flex min-h-11 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition active:scale-[0.99]',
         selected
           ? 'border-[rgba(98,110,255,0.35)] bg-[rgba(98,110,255,0.12)] text-[rgb(var(--nefera-ink))]'
           : 'border-[rgb(var(--nefera-border))] bg-white text-[rgb(var(--nefera-ink))] hover:bg-black/5',
@@ -287,7 +287,12 @@ export function Divider({ className }: { className?: string }) {
 
 export function PageContainer({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cx('mx-auto w-full max-w-6xl px-4 pb-28 pt-7 md:px-8 md:pb-10 motion-reduce:animate-none animate-[nefera-page-in_260ms_ease-out]', className)}>
+    <div
+      className={cx(
+        'mx-auto w-full max-w-[480px] px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] motion-reduce:animate-none animate-[nefera-page-in_260ms_ease-out] min-h-[100dvh] md:max-w-6xl md:px-8 md:pb-10 md:pt-7',
+        className,
+      )}
+    >
       {children}
     </div>
   )
@@ -622,14 +627,23 @@ export function Page({
             <div className="flex min-w-0 items-start gap-4">
               {emoji ? <HeaderMark emoji={emoji} /> : null}
               <div className="min-w-0 pt-0.5">
-                {title ? <div className="text-3xl font-extrabold tracking-tight text-[rgb(var(--nefera-ink))] md:text-4xl">{title}</div> : null}
+                {title ? <div className="text-2xl font-extrabold tracking-tight text-[rgb(var(--nefera-ink))] md:text-4xl">{title}</div> : null}
                 {subtitle ? <div className="mt-2 max-w-2xl text-base leading-7 text-[rgb(var(--nefera-muted))]">{subtitle}</div> : null}
               </div>
             </div>
-            {right ? <div className="shrink-0">{right}</div> : null}
+            {right ? <div className="hidden shrink-0 md:block">{right}</div> : null}
           </div>
         )}
         {children}
+        {right ? (
+          <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 md:hidden">
+            <div className="mx-auto w-full max-w-[480px] px-4">
+              <div className="min-h-14 rounded-3xl border border-white/70 bg-[rgba(255,255,255,0.86)] px-3 py-3 shadow-xl shadow-black/10 backdrop-blur">
+                <div className="flex items-center justify-end gap-2">{right}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-10 text-center text-xs font-semibold text-[rgb(var(--nefera-muted))]">
           Nefera cares for your wellbeing. Your data is private and safe.
         </div>
@@ -672,19 +686,21 @@ export function Modal({
   }, [open])
 
   if (!open) return null
-  const width = size === 'lg' ? 'max-w-3xl' : 'max-w-xl'
+  const width = size === 'lg' ? 'md:max-w-3xl' : 'md:max-w-xl'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
       <button type="button" onClick={onClose} className="absolute inset-0 bg-black/30 backdrop-blur-sm" aria-label="Close dialog" />
       <div
         ref={panelRef}
         tabIndex={-1}
         className={cx(
-          'relative w-full rounded-2xl border border-white/60 bg-[rgba(255,255,255,0.86)] shadow-xl shadow-black/15 outline-none backdrop-blur',
+          'relative w-full max-h-[calc(100dvh-6rem)] overflow-auto rounded-t-3xl border border-white/60 bg-[rgba(255,255,255,0.92)] shadow-xl shadow-black/15 outline-none backdrop-blur animate-[nefera-fade-up_180ms_ease-out] md:max-h-[calc(100dvh-4rem)] md:rounded-2xl',
           width,
         )}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
+        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-black/10 md:hidden" />
         <div className="px-6 pt-6">
           <div className="text-xl font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{title}</div>
           {description ? <div className="mt-2 text-sm leading-6 text-[rgb(var(--nefera-muted))]">{description}</div> : null}

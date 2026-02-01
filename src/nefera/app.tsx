@@ -133,7 +133,9 @@ function AppShell() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const nav = navForRole(user?.role ?? 'student')
-  const active = nav.find((n) => isActivePath(location.pathname, n.to))?.to
+  const activeItem = nav.find((n) => isActivePath(location.pathname, n.to))
+  const active = activeItem?.to
+  const activeLabel = activeItem?.label ?? APP_NAME
 
   useEffect(() => {
     document.documentElement.dataset.role = user?.role ?? 'guest'
@@ -190,39 +192,43 @@ function AppShell() {
       </div>
 
       <div className="md:hidden">
-        <div className="sticky top-0 z-30 border-b border-white/60 bg-[rgba(255,255,255,0.74)] px-4 py-3 backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <img src={logo} alt="Nefera Logo" className="h-10 w-auto object-contain" />
-              <div className="min-w-0">
-                <div className="truncate text-base font-extrabold text-[rgb(var(--nefera-ink))]">{APP_NAME}</div>
-                <div className="truncate text-xs font-semibold text-[rgb(var(--nefera-muted))]">{user?.role.toUpperCase()}</div>
+        <div
+          className="sticky top-0 z-30 border-b border-white/60 bg-[rgba(255,255,255,0.74)] backdrop-blur"
+          style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))', paddingBottom: '0.75rem' }}
+        >
+          <div className="mx-auto w-full max-w-[480px] px-4">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+              <div className="flex items-center">
+                <img src={logo} alt="Nefera Logo" className="h-9 w-auto object-contain" />
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                to={roleHome(user?.role ?? 'student')}
-                className="grid h-10 w-10 place-items-center rounded-2xl border border-white/70 bg-white/70 shadow-lg shadow-black/5"
-              >
-                🏡
-              </Link>
-              <IconButton label="Logout" onClick={logout}>
-                <span className="text-lg">🚪</span>
-              </IconButton>
+              <div className="truncate text-center text-sm font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{activeLabel}</div>
+              <div className="flex items-center justify-end gap-2">
+                <Link to={`/${user?.role ?? 'student'}/profile`}>
+                  <IconButton label="Profile">
+                    <span className="text-lg">🙋</span>
+                  </IconButton>
+                </Link>
+                <IconButton label="Logout" onClick={logout}>
+                  <span className="text-lg">🚪</span>
+                </IconButton>
+              </div>
             </div>
           </div>
         </div>
-        <main className="pb-24">
+        <main className="pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
           <Outlet />
         </main>
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/60 bg-[rgba(255,255,255,0.82)] px-2 py-2 backdrop-blur">
-          <div className="mx-auto grid max-w-xl grid-cols-4 gap-2">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/60 bg-[rgba(255,255,255,0.82)] px-2 pt-2 backdrop-blur"
+          style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+        >
+          <div className="mx-auto grid max-w-[480px] grid-cols-4 gap-2">
             {nav.slice(0, 4).map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
                 className={cx(
-                  'flex flex-col items-center justify-center rounded-2xl border px-2 py-2 text-xs font-semibold transition-all duration-200 ease-out active:translate-y-px',
+                  'flex min-h-12 flex-col items-center justify-center rounded-2xl border px-2 py-2.5 text-xs font-semibold transition-all duration-200 ease-out active:translate-y-px',
                   active === item.to
                     ? 'border-white/70 bg-white/75 text-[rgb(var(--nefera-ink))] shadow-lg shadow-black/5'
                     : 'border-transparent text-[rgb(var(--nefera-muted))] hover:border-white/60 hover:bg-white/55',
@@ -287,7 +293,7 @@ function WelcomePage() {
                   🌊
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Card className="border-[rgba(98,110,255,0.18)]">
                   <CardBody className="space-y-2">
                       <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Weekly feeling distribution</div>
@@ -494,7 +500,7 @@ function StudentDashboard() {
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Student</div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/70 bg-white/70 p-3 text-center shadow-lg shadow-black/5">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Day streak</div>
               <div className="mt-1 text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{dayStreak}</div>
@@ -520,13 +526,13 @@ function StudentDashboard() {
                   Tap a face to start. There’s no “right” answer — we’re just noticing patterns.
                 </div>
               </div>
-              <button type="button" onClick={feelingHint.dismiss} className="shrink-0 text-sm font-semibold text-[rgb(var(--nefera-muted))]">
+              <Button size="sm" variant="secondary" onClick={feelingHint.dismiss}>
                 Got it
-              </button>
+              </Button>
             </div>
           ) : null}
           <Section title="Daily check-in" subtitle="How are you feeling today?" />
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {(['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => (
               <div key={f} className="text-center">
                 <FeelingButton
@@ -549,7 +555,7 @@ function StudentDashboard() {
         <Card>
           <CardBody className="space-y-4">
             <Section title="Your space" subtitle="Gentle tools designed for real school days." />
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3">
               {[
                 { to: '/student/journal/write', title: 'Journal', icon: '📝', desc: 'Write it out, softly.' },
                 { to: '/student/reports', title: 'Reports', icon: '📊', desc: 'Patterns over time.' },
@@ -693,7 +699,7 @@ function StudentCheckInFlow() {
       </div>
 
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
@@ -804,7 +810,7 @@ function StudentSleepTracker() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/student/dashboard', { replace: true })}>
@@ -1015,7 +1021,7 @@ function StudentJournalWrite() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/student/dashboard')}>
@@ -1160,7 +1166,7 @@ function StudentGratitude() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/student/dashboard', { replace: true })}>
@@ -1632,7 +1638,7 @@ function StudentReportIncident() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-end gap-2">
               <Button className="min-w-40" disabled={!canSubmit} onClick={() => setConfirm(true)}>
@@ -1863,7 +1869,7 @@ function StudentProfile() {
             <div className="text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{user?.name ?? 'Guest'}</div>
             <div className="text-sm font-semibold text-[rgb(var(--nefera-muted))]">{user?.role.toUpperCase()}</div>
           </div>
-          <div className="ml-auto grid w-full grid-cols-3 gap-2 md:w-auto">
+          <div className="ml-auto grid w-full grid-cols-1 gap-2 sm:grid-cols-3 md:w-auto">
             <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-3 text-center">
               <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Check-ins</div>
               <div className="mt-1 text-xl font-extrabold text-[rgb(var(--nefera-ink))]">{checkIns}</div>
@@ -2021,7 +2027,7 @@ function TeacherBroadcast() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/teacher/dashboard')}>
@@ -2174,7 +2180,7 @@ function ParentMessage() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/parent/dashboard')}>
@@ -2254,7 +2260,7 @@ function ParentReportIncident() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-end gap-2">
               <Button className="min-w-40" disabled={!canSubmit} onClick={() => setConfirm(true)}>
@@ -2522,7 +2528,7 @@ function CounselorBroadcast() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/counselor/dashboard')}>
@@ -2646,7 +2652,7 @@ function PrincipalBroadcast() {
         </CardBody>
       </Card>
       <div className="fixed inset-x-0 bottom-[88px] z-40 md:hidden">
-        <div className="mx-auto w-full max-w-6xl px-4">
+        <div className="mx-auto w-full max-w-[480px] px-4">
           <div className="rounded-2xl border border-white/70 bg-white/70 p-3 shadow-lg shadow-black/10 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <Button variant="ghost" onClick={() => navigate('/principal/dashboard')}>
