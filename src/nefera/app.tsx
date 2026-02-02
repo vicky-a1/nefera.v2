@@ -1,6 +1,19 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { type Feeling, type Role, feelingEmoji, feelingLabel, getTodayISO, makeId, useAuth, useNefera } from './state'
+import {
+  type AgeGroup,
+  type Feeling,
+  type Role,
+  type SleepHoursBucket,
+  type StudentCheckIn,
+  type StudentCheckInAnswers,
+  feelingEmoji,
+  feelingLabel,
+  getTodayISO,
+  makeId,
+  useAuth,
+  useNefera,
+} from './state'
 import logo from '@/assets/nefera-logo.png'
 import {
   Avatar,
@@ -34,6 +47,8 @@ import {
   TileCard,
   Toast,
   cx,
+  flagLabel,
+  flagTone,
   useCountdown,
 } from './ui'
 
@@ -86,6 +101,7 @@ function navForRole(role: Role): NavItem[] {
       return [
         { to: '/counselor/dashboard', label: 'Home', emoji: '🏡' },
         { to: '/counselor/flags', label: 'Flags', emoji: '🚩' },
+        { to: '/counselor/reports', label: 'Reports', emoji: '🧾' },
         { to: '/counselor/broadcast', label: 'Broadcast', emoji: '📣' },
         { to: '/counselor/profile', label: 'Profile', emoji: '🙋' },
       ]
@@ -480,6 +496,79 @@ function StudentDashboard() {
   const feelingHint = useFirstVisitHint('nefera_hint_feeling_checkin_v1')
   const dayStreak = streakFromISODateList(state.student.checkIns.map((c) => c.createdAt.slice(0, 10)))
   const journalStreak = streakFromISODateList(state.student.journal.map((j) => j.dateKey))
+  const last7 = useMemo(() => {
+    const base = new Date(getTodayISO())
+    const days: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base)
+      d.setDate(d.getDate() - i)
+      days.push(d.toISOString().slice(0, 10))
+    }
+    return days
+  }, [])
+
+  const last7CheckIns = useMemo(() => {
+    const byDay = new Map<string, StudentCheckIn>()
+    for (const c of state.student.checkIns) {
+      const day = c.createdAt.slice(0, 10)
+      if (!last7.includes(day)) continue
+      const prev = byDay.get(day)
+      if (!prev || prev.createdAt < c.createdAt) byDay.set(day, c)
+    }
+    return last7.map((d) => byDay.get(d)).filter(Boolean) as StudentCheckIn[]
+  }, [last7, state.student.checkIns])
+
+  const weeklySegments = useMemo(() => {
+    const counts: Record<Feeling, number> = { happy: 0, neutral: 0, flat: 0, worried: 0, sad: 0 }
+    for (const c of last7CheckIns) counts[c.feeling]++
+    return (['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => ({
+      label: feelingLabel(f),
+      value: counts[f],
+      color: `rgb(var(--nefera-feeling-${f}))`,
+    }))
+  }, [last7CheckIns])
+
+  const topStressors = useMemo(() => {
+    const buckets: Record<string, number> = {
+      Studies: 0,
+      'Sleep issues': 0,
+      'Social concerns': 0,
+      'Screen time & Comparison': 0,
+      'Family-Related Concerns': 0,
+      Other: 0,
+    }
+
+    function bump(label: string) {
+      buckets[label] = (buckets[label] ?? 0) + 1
+    }
+
+    function categorize(text: string) {
+      const v = text.toLowerCase()
+      if (/(exam|test|homework|assignment|deadline|grade|school work|schoolwork|stud)/.test(v)) return 'Studies'
+      if (/(sleep|tired|energy|bed|wake)/.test(v)) return 'Sleep issues'
+      if (/(friend|social|classmate|left out|alone|group)/.test(v)) return 'Social concerns'
+      if (/(screen|phone|social media|media|tv)/.test(v)) return 'Screen time & Comparison'
+      if (/(family|mom|dad|parent|guardian|home)/.test(v)) return 'Family-Related Concerns'
+      return 'Other'
+    }
+
+    for (const c of last7CheckIns) {
+      const sels = (c.answers.mainSelections ?? []).filter(Boolean)
+      for (const s of sels) bump(categorize(s))
+      const other = String(c.answers.mainSelectionsOther ?? '').trim()
+      if (other) bump(categorize(other))
+      if (typeof c.answers.flatSleepLastNight === 'string') bump(categorize(c.answers.flatSleepLastNight))
+      if (typeof c.answers.worriedMadeHard === 'string') bump(categorize(c.answers.worriedMadeHard))
+      if (typeof c.answers.sadHardToEnjoy === 'string') bump(categorize(c.answers.sadHardToEnjoy))
+    }
+
+    return Object.entries(buckets)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([k, v]) => ({ k, v }))
+  }, [last7CheckIns])
+
   const totalActiveDays = useMemo(() => {
     const days = new Set<string>()
     state.student.checkIns.forEach((x) => days.add(x.createdAt.slice(0, 10)))
@@ -571,36 +660,31 @@ function StudentDashboard() {
         </Card>
         <div className="grid gap-4">
           {(() => {
-            const segments = [
-              { label: 'Happy', value: 25, color: 'rgb(var(--nefera-feeling-happy))' },
-              { label: 'Neutral', value: 18, color: 'rgb(var(--nefera-feeling-neutral))' },
-              { label: 'Flat', value: 12, color: 'rgb(var(--nefera-feeling-flat))' },
-              { label: 'Worried', value: 10, color: 'rgb(var(--nefera-feeling-worried))' },
-              { label: 'Sad', value: 6, color: 'rgb(var(--nefera-feeling-sad))' },
-            ]
             return (
               <>
                 <ChartCard title="Weekly feeling distribution" subtitle="Last 7 days">
                   <div className="grid place-items-center rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-6 shadow-none md:border-white/70 md:bg-white/55 md:shadow-lg md:shadow-black/5">
-                    <DonutChart size={168} stroke={18} segments={segments} />
+                    <DonutChart size={168} stroke={18} segments={weeklySegments} />
                   </div>
-                  <ChartLegend segments={segments} />
+                  <ChartLegend segments={weeklySegments} />
                 </ChartCard>
                 <ChartCard title="Top stressors" subtitle="This week">
                   <div className="space-y-3">
-                    {[
-                      { k: 'Homework', v: 10 },
-                      { k: 'Friends', v: 7 },
-                      { k: 'Sleep', v: 6 },
-                    ].map((x) => (
-                      <div key={x.k} className="space-y-2">
-                        <div className="flex items-center justify-between text-sm font-semibold text-[rgb(var(--nefera-muted))]">
-                          <span className="text-[rgb(var(--nefera-ink))]">{x.k}</span>
-                          <span>{x.v}</span>
+                    {topStressors.length ? (
+                      topStressors.map((x) => (
+                        <div key={x.k} className="space-y-2">
+                          <div className="flex items-center justify-between text-sm font-semibold text-[rgb(var(--nefera-muted))]">
+                            <span className="text-[rgb(var(--nefera-ink))]">{x.k}</span>
+                            <span>{x.v}</span>
+                          </div>
+                          <MiniBar value={x.v} max={Math.max(...topStressors.map((t) => t.v))} />
                         </div>
-                        <MiniBar value={x.v} max={12} />
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-white/70 bg-white/55 p-4 text-sm text-[rgb(var(--nefera-muted))] shadow-lg shadow-black/5">
+                        Check in a few times to see what’s showing up most.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </ChartCard>
               </>
@@ -622,29 +706,357 @@ function StudentCheckInFlow() {
   const navigate = useNavigate()
   const feeling = (params.feeling as Feeling | undefined) ?? 'neutral'
   const [step, setStep] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<StudentCheckInAnswers>({})
   const [journalPrompt, setJournalPrompt] = useState(false)
 
-  const steps = useMemo(() => {
-    const base = [
-      { key: 'q1', prompt: 'Tell us a little more.' },
-      { key: 'q2', prompt: 'What would help tomorrow?' },
-    ]
-    if (feeling === 'happy') base.unshift({ key: 'q0', prompt: 'What made you happy?' })
-    if (feeling === 'worried') base.unshift({ key: 'q0', prompt: 'What worried you?' })
-    if (feeling === 'sad') base.unshift({ key: 'q0', prompt: 'What made you sad?' })
-    return base
-  }, [feeling])
+  const ageGroup: AgeGroup = state.student.ageGroup ?? '11-17'
+  const studentId = state.parent.children[0]?.id ?? state.teacher.students[0]?.id ?? 'stu_1'
 
+  type Step =
+    | { kind: 'multi'; key: keyof StudentCheckInAnswers; title: string; subtitle?: string; items: string[]; otherKey?: keyof StudentCheckInAnswers }
+    | { kind: 'single'; key: keyof StudentCheckInAnswers; title: string; subtitle?: string; options: string[] }
+    | { kind: 'stars'; key: keyof StudentCheckInAnswers; title: string; subtitle?: string; max: number }
+
+  const flow = useMemo(() => {
+    const byFeeling = {
+      happy: {
+        '6-10': {
+          pageSubtitle: "🎉 SUPER FUN DAY! What made you smile today?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "🎉 SUPER FUN DAY! What made you smile today?",
+              subtitle: 'Tap to select',
+              items: [
+                'Did great in school',
+                'Played with friends',
+                'Felt happy inside',
+                'Slept good/good energy',
+                'Finished something hard',
+                'Just happy for no reason',
+                'Did fun game or drawing',
+                'Helped mom/dad/friend',
+                'Other',
+              ],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'stars', key: 'happyStars', title: 'How big was your happy?', max: 5 },
+            { kind: 'single', key: 'happyWhen', title: 'When happiest today?', options: ['Morning', 'School time', 'After school', 'Night time'] },
+            { kind: 'single', key: 'happyWho', title: 'Who made you happy?', options: ['Friend', 'Family', 'Teacher', 'Game/toy', 'Class fun', 'Nobody special'] },
+            { kind: 'single', key: 'happyHelp', title: 'Did happy help school or play?', options: ['School easier', 'Play more fun', 'Both better', 'no change'] },
+            { kind: 'single', key: 'happyWantMore', title: 'Want more happy tomorrow?', options: ['Yes definitely', 'Maybe', 'Not sure'] },
+          ] satisfies Step[],
+          closing: 'Yay happy day! Happy feelings are awesome. Take big breath in, smile BIG, think happy moment 5 seconds.',
+        },
+        '11-17': {
+          pageSubtitle: "🎉 AWESOME DAY! What made you happy today?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "🎉 AWESOME DAY! What made you happy today?",
+              subtitle: 'Tap to select',
+              items: [
+                'Got good grades/test score',
+                'Hung out with friends',
+                'Felt proud of my work/effort',
+                'Good sleep/good energy',
+                'Made progress on goals',
+                'Just felt good feel',
+                'Enjoyed gaming/hobby',
+                'Helped someone',
+                'Other',
+              ],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'stars', key: 'happyStars', title: 'How big was your happy feeling today?', max: 5 },
+            { kind: 'single', key: 'happyWhen', title: 'When did you feel happiest today?', options: ['Morning', 'School time', 'After school', 'Evening/night'] },
+            { kind: 'single', key: 'happyWho', title: 'Who or what helped you feel happy?', options: ['Friend', 'Family', 'Teacher', 'Game/hobby', 'Class subject', 'Nothing specific'] },
+            { kind: 'single', key: 'happyHelp', title: 'Did happy help schoolwork or free time?', options: ['School easier', 'Free time better', 'Both better', 'No change'] },
+            { kind: 'single', key: 'happyWantMore', title: 'Want more of this tomorrow?', options: ['Yes definitely', 'Maybe', 'Not sure'] },
+          ] satisfies Step[],
+          closing: 'Great sharing happy moments! Noticing good feelings helps find more. Take slow deep breath, smile big, think of happy moment 5 seconds.',
+        },
+      },
+      neutral: {
+        '6-10': {
+          pageSubtitle: "🙂 A NORMAL DAY - What was the vibe?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "You picked 'okay'. What was your day like?",
+              subtitle: 'Tap to select',
+              items: ['Normal school day', 'Little boring', 'Waiting for fun', 'Some good some bad', 'Busy day', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'neutralDayLike', title: 'Day more like:', options: ['Little boring', 'Just normal', 'Not sure', 'Okay'] },
+            { kind: 'single', key: 'neutralAnyFun', title: 'Any fun today?', options: ['Yes with friends', 'Yes in class', 'Yes at home', 'No fun'] },
+            { kind: 'single', key: 'neutralLessFunBecause', title: 'Anything made Day less fun because?', options: ['Tired', 'Bored', 'Not interested', 'All good'] },
+            { kind: 'single', key: 'neutralSchoolWork', title: 'School work today?', options: ['Easy', 'Okay', 'Hard to listen'] },
+            { kind: 'single', key: 'neutralFriends', title: 'Friends today?', options: ['Played together', 'Sometimes alone', 'Mostly alone'] },
+          ] satisfies Step[],
+          closing: 'Thanks for okay day. All kids have okay days. Pick one fun thing for tomorrow, smile about it.',
+        },
+        '11-17': {
+          pageSubtitle: "🙂 A NORMAL DAY - What was the vibe?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "You picked 'okay'. How would you describe your day?",
+              subtitle: 'Tap to select',
+              items: ['Normal school day', 'A bit boring', 'Waiting for something', 'Mixed good and bad moments', 'Busy but okay', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'neutralDayLike', title: 'Day felt more like:', options: ['Little boring', 'Just normal', 'Not sure', 'Okay'] },
+            { kind: 'single', key: 'neutralAnyFun', title: 'Any good moment today?', options: ['Yes with friends', 'Yes in class', 'Yes at home', 'No good moments'] },
+            { kind: 'single', key: 'neutralLessFunBecause', title: 'Anything made day less fun?', options: ['Felt tired', 'Felt bored', 'Not interested', 'Nothing'] },
+            { kind: 'single', key: 'neutralSchoolWork', title: 'How was school work today?', options: ['Easy to focus', 'Okay focus', 'Hard to focus'] },
+            { kind: 'single', key: 'neutralFriends', title: 'How with friends/classmates?', options: ['Felt included', 'Sometimes alone', 'Mostly alone'] },
+          ] satisfies Step[],
+          closing: 'Thanks for sharing okay day. Normal days happen to everyone. Pick one good thing for tomorrow and picture it 3 seconds.',
+        },
+      },
+      flat: {
+        '6-10': {
+          pageSubtitle: "😐 FEELING FLAT? What's draining your energy?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "You picked 'flat'. How did day feel?",
+              subtitle: 'Tap to select',
+              items: [
+                "Didn't sleep good",
+                'Too much homework',
+                'Thinking too much',
+                'Wanted to be alone',
+                'Too much TV/phone',
+                'No energy to play',
+                'Felt blank',
+                'Other',
+              ],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'flatWhen', title: 'Flat feeling when?', options: ['All day', 'Some times', 'Little bit'] },
+            { kind: 'single', key: 'flatFunNotFun', title: 'Fun things not fun?', options: ['Games', 'Friends', 'School stuff', 'Reading', 'Nothing fun', 'Other'] },
+            { kind: 'single', key: 'flatTiredWhere', title: 'Tired where?', options: ['Body tired', 'Head tired', 'Both tired', 'Not tired'] },
+            { kind: 'single', key: 'flatWithOtherKids', title: 'With other kids?', options: ['Wanted to play', 'Stayed quiet', 'Wanted alone'] },
+            { kind: 'single', key: 'flatSleepLastNight', title: 'Sleep last night?', options: ['Good sleep', 'Okay sleep', 'Bad sleep'] },
+          ] satisfies Step[],
+          closing: 'Thanks for flat day. Everyone has low energy days. Stand up tall, stretch arms HIGH, 3 big breaths.',
+        },
+        '11-17': {
+          pageSubtitle: "😐 FEELING FLAT? What's draining your energy?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: "You picked 'flat'. What was your day like?",
+              subtitle: 'Tap to select',
+              items: [
+                "Didn't sleep well",
+                'Too much homework/assignments',
+                'Overthinking things',
+                'Social tiredness',
+                'Too much phone/screen time',
+                'No motivation',
+                'Felt blank/low energy',
+                'Other',
+              ],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'flatWhen', title: 'Flat feeling when?', options: ['Most of day', 'Some parts of day', 'Short time only'] },
+            { kind: 'single', key: 'flatFunNotFun', title: 'Usually fun things not fun today?', options: ['Games', 'Hanging with friends', 'School subjects', 'Reading', 'Nothing felt fun', 'Other'] },
+            { kind: 'single', key: 'flatTiredWhere', title: 'Tired in:', options: ['Body', 'Head (hard to think)', 'Both', 'Not tired'] },
+            { kind: 'single', key: 'flatWithOtherKids', title: 'Around others today:', options: ['Wanted to join', 'Stayed quiet/away', 'Felt okay alone'] },
+            { kind: 'single', key: 'flatSleepLastNight', title: 'Sleep last night:', options: ['Good sleep', 'Okay sleep', 'Poor sleep'] },
+          ] satisfies Step[],
+          closing: 'Thanks for explaining flat day. Low energy days are normal. Try wake-up move: stand, stretch arms up high, 3 slow deep breaths.',
+        },
+      },
+      worried: {
+        '6-10': {
+          pageSubtitle: "😟 FEELING STRESSED? What's on your mind?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: 'You picked worried. What worried you today?',
+              subtitle: 'Tap to select',
+              items: ['School test/homework', 'Friends fight', 'Family things', 'Feel sick/tired', 'Night scared', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'worriedHowBig', title: 'Worry how big?', options: ['Tiny worry', 'Medium worry', 'Very big'] },
+            { kind: 'single', key: 'worriedWhen', title: 'Worry when?', options: ['All day', 'Morning school', 'Night time', 'Some times'] },
+            {
+              kind: 'multi',
+              key: 'worriedBodyFeel',
+              title: 'Body feel?',
+              subtitle: 'Tap to select',
+              items: ['Heart fast', 'Tummy funny', 'Hard breathe', 'Hands shaky', 'Nothing', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'worriedMadeHard', title: 'Worry made hard?', options: ['School work', 'Talk friends', 'Play time', 'No problem'] },
+            { kind: 'single', key: 'worriedYouDid', title: 'You did?', options: ['Told someone', 'Kept secret'] },
+          ] satisfies Step[],
+          closing: 'Brave telling worry! Breathe nose 1-2-3, mouth 1-2-3-4. Try 3 times.',
+          coping: ['🎧 5-minute breathing exercise (guided audio)', '📝 Brain dump (free-form journaling space)', '🚶 Quick walk (activity suggestion)'],
+        },
+        '11-17': {
+          pageSubtitle: "😟 FEELING STRESSED? What's on your mind?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: 'You picked worried. What made you worried today?',
+              subtitle: 'Tap to select',
+              items: ['Exams/tests/deadlines', 'Friends/social issues', 'Family matters', 'Health/feeling unwell', 'Sleep problems', 'Future worries', 'Social media pressure', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'worriedHowBig', title: 'How big was worry?', options: ['Tiny', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'worriedWhen', title: 'Worry happened when?', options: ['All day', 'Morning school', 'Night time', 'Some times'] },
+            {
+              kind: 'multi',
+              key: 'worriedBodyFeel',
+              title: 'Body felt like when worried?',
+              subtitle: 'Tap to select',
+              items: ['Heart fast', 'Tummy funny', 'Hard breathe', 'Hands shaky', 'Nothing', 'sweaty', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'worriedMadeHard', title: 'Worry made harder to:', options: ['School work', 'Talk to others', 'Enjoy free time', 'No problems'] },
+            { kind: 'single', key: 'worriedYouDid', title: 'When worried, you:', options: ['Talked to someone', 'Kept it inside'] },
+          ] satisfies Step[],
+          closing: 'Brave sharing worries. Try calming breath: breathe in nose count 1-2-3, out mouth 1-2-3-4. Do 3 times.',
+          coping: ['🎧 5-minute breathing exercise (guided audio)', '📝 Brain dump (free-form journaling space)', '🚶 Quick walk (activity suggestion)'],
+        },
+      },
+      sad: {
+        '6-10': {
+          pageSubtitle: "😢 YOU SEEM DOWN - What's happening?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: 'You picked sad. What made you sad today?',
+              subtitle: 'Tap to select',
+              items: ['Wanted to cry', 'Games not fun', 'Very very tired', "Can't think at school", 'Feel bad about me', 'Miss someone', 'Feel alone', 'Other'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'sadHowBig', title: 'Sad how big?', options: ['Little sad', 'Medium sad', 'Very big'] },
+            { kind: 'single', key: 'sadWhen', title: 'Sad when?', options: ['Short time only', 'Some times during day', 'Most of day'] },
+            { kind: 'single', key: 'sadHardToEnjoy', title: 'Hard to enjoy fun?', options: ['Still fun', 'Little hard', 'Very hard'] },
+            { kind: 'single', key: 'sadWantToBe', title: 'Want to be?', options: ['With friends', 'Alone', 'Both okay'] },
+            { kind: 'single', key: 'sadHeadSaid', title: 'Head said when sad?', options: ['I did bad', 'Nobody likes me', "I'm not good", 'Nothing', 'Other'] },
+          ] satisfies Step[],
+          closing: 'Thanks for sharing sad. All kids feel sad sometimes. Hand on heart, hug arms tight, 3 slow breaths.',
+        },
+        '11-17': {
+          pageSubtitle: "😢 YOU SEEM DOWN - What's happening?",
+          steps: [
+            {
+              kind: 'multi',
+              key: 'mainSelections',
+              title: 'You picked sad. What made you feel sad today?',
+              subtitle: 'Tap to select',
+              items: ['Felt sad/wanted to cry', 'No fun in games/hobbies', 'Very tired/low energy', 'Hard to focus/concentrate', 'Felt bad about myself', 'Missed someone important', 'Felt alone/left out', 'Other serious reason'],
+              otherKey: 'mainSelectionsOther',
+            },
+            { kind: 'single', key: 'sadHowBig', title: 'How big was sad feeling?', options: ['Little bit', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'sadWhen', title: 'Sad happened when?', options: ['Short time only', 'Some times during day', 'Most of day'] },
+            { kind: 'single', key: 'sadHardToEnjoy', title: 'Sad made harder to enjoy:', options: ['Games/hobbies', 'Talking to people', 'School work', 'Still enjoyed things'] },
+            { kind: 'single', key: 'sadWantToBe', title: 'When sad, wanted to be:', options: ['With people', 'Alone', 'Both okay'] },
+            { kind: 'single', key: 'sadHeadSaid', title: 'What thought in head when sad?', options: ['I did something wrong', 'Nobody likes me', "I'm not good enough", 'Nothing specific', 'Other'] },
+          ] satisfies Step[],
+          closing: 'Glad you shared sad feelings. Everyone feels sad sometimes. Try comfort tool: hand on heart, hug arms around self, 3 slow breaths.',
+        },
+      },
+    } as const
+
+    const group = ageGroup === '6-10' ? '6-10' : '11-17'
+    const cfg = byFeeling[feeling][group]
+    return cfg
+  }, [ageGroup, feeling])
+
+  const steps = flow.steps
   const current = steps[step]
-  const canContinue = !!answers[current.key]?.trim()
+
+  const canContinue = useMemo(() => {
+    if (!current) return false
+    const v = answers[current.key]
+    if (current.kind === 'stars') return typeof v === 'number' && v > 0
+    if (current.kind === 'single') return typeof v === 'string' && v.trim().length > 0
+    if (current.kind === 'multi') return Array.isArray(v) ? v.length > 0 : false
+    return false
+  }, [answers, current])
+
+  function setAnswer(key: keyof StudentCheckInAnswers, value: unknown) {
+    setAnswers((a) => ({ ...a, [key]: value }))
+  }
+
+  function renderCurrent() {
+    if (!current) return null
+    if (current.kind === 'stars') {
+      const v = (answers[current.key] as number | undefined) ?? 0
+      return (
+        <div className="space-y-4">
+          <Section title={current.title} />
+          <Stars value={v} onChange={(n) => setAnswer(current.key, n)} max={current.max} />
+        </div>
+      )
+    }
+    if (current.kind === 'single') {
+      const v = (answers[current.key] as string | undefined) ?? ''
+      return (
+        <div className="space-y-4">
+          <Section title={current.title} subtitle={current.subtitle} />
+          <Tabs value={v} onChange={(nv) => setAnswer(current.key, nv)} tabs={current.options.map((o) => ({ value: o, label: o }))} />
+        </div>
+      )
+    }
+    const selected = ((answers[current.key] as string[] | undefined) ?? []).filter(Boolean)
+    const values = Object.fromEntries(current.items.map((it) => [it, selected.includes(it)])) as Record<string, boolean>
+    return (
+      <div className="space-y-4">
+        <Section title={current.title} subtitle={current.subtitle} />
+        <div className="space-y-2">
+          {current.items.map((it) => (
+            <label key={it} className="flex items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+              <input
+                type="checkbox"
+                checked={!!values[it]}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setAnswer(
+                    current.key,
+                    checked ? Array.from(new Set([...selected, it])) : selected.filter((x) => x !== it),
+                  )
+                }}
+                className="mt-1 h-4 w-4 accent-[rgb(var(--nefera-brand))]"
+              />
+              <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">{it}</div>
+            </label>
+          ))}
+        </div>
+        {current.otherKey && selected.includes('Other') ? (
+          <Input
+            label="Other"
+            value={String(answers[current.otherKey] ?? '')}
+            onChange={(e) => setAnswer(current.otherKey!, e.target.value)}
+          />
+        ) : null}
+      </div>
+    )
+  }
 
   return (
-    <Page emoji={feelingEmoji(feeling)} title={`${feelingLabel(feeling)} check-in`} subtitle="Small steps. Honest answers. No judgement.">
+    <Page emoji={feelingEmoji(feeling)} title={`${feelingLabel(feeling)} check-in`} subtitle={flow.pageSubtitle}>
       <div className="space-y-4">
         <StepperHeader
           title={`Question ${step + 1}`}
-          subtitle={current.prompt}
+          subtitle={current?.title}
           step={step + 1}
           total={steps.length}
           left={
@@ -662,14 +1074,9 @@ function StudentCheckInFlow() {
           }
         />
 
-        <Card key={current.key} className="animate-[nefera-fade-up_220ms_ease-out]">
+        <Card key={String(current?.key ?? step)} className="animate-[nefera-fade-up_220ms_ease-out]">
           <CardBody className="space-y-4">
-            <Section title={current.prompt} subtitle="Type a few words. It’s enough." />
-            <TextArea
-              value={answers[current.key] ?? ''}
-              onChange={(e) => setAnswers((a) => ({ ...a, [current.key]: e.target.value }))}
-              inputClassName="min-h-[34vh] text-base leading-7"
-            />
+            {renderCurrent()}
             <Divider />
             <div className="hidden items-center justify-between gap-2 md:flex">
               <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
@@ -685,7 +1092,7 @@ function StudentCheckInFlow() {
                   onClick={() => {
                     dispatch({
                       type: 'student/addCheckIn',
-                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), feeling, ageGroup: state.student.ageGroup ?? '11-17', answers },
+                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), studentId, feeling, ageGroup, answers },
                     })
                     setJournalPrompt(true)
                   }}
@@ -716,7 +1123,7 @@ function StudentCheckInFlow() {
                   onClick={() => {
                     dispatch({
                       type: 'student/addCheckIn',
-                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), feeling, ageGroup: state.student.ageGroup ?? '11-17', answers },
+                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), studentId, feeling, ageGroup, answers },
                     })
                     setJournalPrompt(true)
                   }}
@@ -748,8 +1155,29 @@ function StudentCheckInFlow() {
           </>
         }
       >
-        <div className="rounded-2xl border border-white/70 bg-white/70 p-5 text-sm leading-6 text-[rgb(var(--nefera-muted))]">
-          Tip: Write what happened, what you felt in your body, and what you want tomorrow.
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-5 text-sm leading-6 text-[rgb(var(--nefera-muted))]">{flow.closing}</div>
+          {'coping' in flow ? (
+            <div className="rounded-2xl border border-white/70 bg-white/70 p-5">
+              <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">💪 COPING POWER-UP - Pick one to feel better:</div>
+              <div className="mt-3 grid gap-2">
+                {flow.coping.map((x) => (
+                  <button
+                    key={x}
+                    type="button"
+                    onClick={() => {
+                      if (x.includes('breathing')) navigate('/student/soul-space')
+                      else if (x.includes('Brain dump')) navigate(`/student/journal/write?title=${encodeURIComponent('📝 Brain dump')}`, { replace: true })
+                      else setJournalPrompt(false)
+                    }}
+                    className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-4 py-3 text-left text-sm font-semibold text-[rgb(var(--nefera-ink))]"
+                  >
+                    {x}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </Modal>
     </Page>
@@ -757,54 +1185,48 @@ function StudentCheckInFlow() {
 }
 
 function StudentSleepTracker() {
-  const { dispatch } = useNefera()
+  const { state, dispatch } = useNefera()
   const navigate = useNavigate()
-  const [bedtime, setBedtime] = useState('22:30')
-  const [wake, setWake] = useState('06:30')
-  const [quality, setQuality] = useState(3)
-  const [notes, setNotes] = useState('')
+  const [bucket, setBucket] = useState<SleepHoursBucket | ''>('')
   const [toast, setToast] = useState(false)
-
-  function calcHours() {
-    const [bh, bm] = bedtime.split(':').map(Number)
-    const [wh, wm] = wake.split(':').map(Number)
-    const b = bh * 60 + bm
-    const w = wh * 60 + wm
-    const mins = w >= b ? w - b : 24 * 60 - b + w
-    return Math.round((mins / 60) * 10) / 10
-  }
+  const studentId = state.parent.children[0]?.id ?? state.teacher.students[0]?.id ?? 'stu_1'
 
   function onSave() {
-    dispatch({ type: 'student/addSleepLog', log: { id: makeId('sleep'), createdAt: new Date().toISOString(), hours: calcHours(), quality, notes: notes.trim() } })
+    if (!bucket) return
+    dispatch({ type: 'student/addSleepLog', log: { id: makeId('sleep'), createdAt: new Date().toISOString(), studentId, hoursBucket: bucket } })
     setToast(true)
     window.setTimeout(() => navigate('/student/dashboard', { replace: true }), 250)
   }
 
   return (
-    <Page emoji="🌙" title="Sleep tracker" subtitle="A quick log for today.">
+    <Page emoji="🌙" title="Sleep tracker" subtitle="How was your sleep last night?">
       <Card>
-        <CardBody className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-3">
-            <Input label="Bedtime" type="time" value={bedtime} onChange={(e) => setBedtime(e.target.value)} />
-            <Input label="Wake time" type="time" value={wake} onChange={(e) => setWake(e.target.value)} />
-            <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4">
-              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Estimated hours</div>
-              <div className="mt-1 text-3xl font-extrabold text-[rgb(var(--nefera-ink))]">{calcHours()}h</div>
-            </div>
+        <CardBody className="space-y-4">
+          <Section title='Question' subtitle='"How was your sleep last night?"' />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {([
+              { label: '1–4 hours', value: '1-4' },
+              { label: '5 hours', value: '5' },
+              { label: '6 hours', value: '6' },
+              { label: '7 hours', value: '7' },
+              { label: '8+ hours', value: '8+' },
+            ] as const).map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setBucket(o.value)}
+                className={cx(
+                  'grid h-16 w-full place-items-center rounded-full border border-[rgb(var(--nefera-border))] bg-white text-sm font-extrabold text-[rgb(var(--nefera-ink))] shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/85 md:hover:shadow-xl md:hover:shadow-black/10',
+                  bucket === o.value ? 'ring-4 ring-[rgba(98,110,255,0.22)]' : '',
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
           </div>
-          <div className="space-y-3">
-            <div>
-              <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--nefera-ink))]">Sleep quality</div>
-              <Stars value={quality} onChange={setQuality} max={5} />
-            </div>
-            <TextArea label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <div className="md:col-span-2 hidden flex-wrap items-center justify-end gap-2 pt-1 md:flex">
-            <Button variant="ghost" onClick={() => navigate('/student/dashboard', { replace: true })}>
-              Skip
-            </Button>
-            <Button onClick={onSave}>
-              Save
+          <div className="hidden justify-end md:flex">
+            <Button disabled={!bucket} onClick={onSave}>
+              Submit
             </Button>
           </div>
         </CardBody>
@@ -812,12 +1234,9 @@ function StudentSleepTracker() {
       <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3">
           <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
-            <div className="grid grid-cols-2 gap-2">
-              <Button className="h-14 w-full" variant="secondary" onClick={() => navigate('/student/dashboard', { replace: true })}>
-                Skip
-              </Button>
-              <Button className="h-14 w-full" onClick={onSave}>
-                Save
+            <div className="grid gap-2">
+              <Button className="h-14 w-full" disabled={!bucket} onClick={onSave}>
+                Submit
               </Button>
             </div>
           </div>
@@ -850,6 +1269,96 @@ function streakFromISODateList(isoDates: string[]) {
     else break
   }
   return streak
+}
+
+function lastDaysISO(count: number) {
+  const base = new Date(getTodayISO())
+  const days: string[] = []
+  for (let i = 0; i < count; i++) {
+    const d = new Date(base)
+    d.setDate(d.getDate() - i)
+    days.push(d.toISOString().slice(0, 10))
+  }
+  return days
+}
+
+function latestCheckInByDay(checkIns: StudentCheckIn[]) {
+  const map = new Map<string, StudentCheckIn>()
+  for (const c of checkIns) {
+    const day = c.createdAt.slice(0, 10)
+    const prev = map.get(day)
+    if (!prev || prev.createdAt < c.createdAt) map.set(day, c)
+  }
+  return map
+}
+
+function collectAnswerText(answers: StudentCheckInAnswers) {
+  const out: string[] = []
+  for (const [, v] of Object.entries(answers)) {
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (t) out.push(t)
+    } else if (Array.isArray(v) && v.every((x) => typeof x === 'string')) {
+      for (const s of v) {
+        const t = s.trim()
+        if (t) out.push(t)
+      }
+    }
+  }
+  return out
+}
+
+function wellbeingThemeCounts(checkIns: StudentCheckIn[]) {
+  const counts: Record<string, number> = {}
+  function bump(k: string) {
+    counts[k] = (counts[k] ?? 0) + 1
+  }
+
+  function themesForText(text: string) {
+    const v = text.toLowerCase()
+    const themes: string[] = []
+    if (/(self[-\s]?harm|suicide|kill myself|die|cutting|overdose)/.test(v)) themes.push('Self-harm/Suicide')
+    if (/(bully|bullying|harass|harassment|threat|assault)/.test(v)) themes.push('Bullying/Safety')
+    if (/(exam|test|homework|assignment|deadline|grade|school work|schoolwork|study)/.test(v)) themes.push('Studies')
+    if (/(sleep|tired|energy|bed|wake|insomnia|nightmare)/.test(v)) themes.push('Sleep')
+    if (/(friend|social|classmate|left out|alone|group|relationship)/.test(v)) themes.push('Social')
+    if (/(family|mom|dad|parent|guardian|home)/.test(v)) themes.push('Family')
+    if (/(sick|ill|pain|headache|stomach|tummy)/.test(v)) themes.push('Health')
+    return themes.length ? themes : ['Other']
+  }
+
+  for (const c of checkIns) {
+    const texts = collectAnswerText(c.answers)
+    for (const t of texts) {
+      for (const theme of themesForText(t)) bump(theme)
+    }
+  }
+  return counts
+}
+
+function wellbeingSignals(checkIns: StudentCheckIn[], sleepLogs: { createdAt: string; hoursBucket?: SleepHoursBucket }[]) {
+  const last7 = lastDaysISO(7)
+  const byDay = latestCheckInByDay(checkIns)
+  const last7CheckIns = last7.map((d) => byDay.get(d)).filter(Boolean) as StudentCheckIn[]
+  const counts = wellbeingThemeCounts(last7CheckIns)
+  const themes = Object.entries(counts)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([k, v]): { label: string; tone: 'neutral' | 'warn' | 'danger' } => ({
+      label: `${k} (${v})`,
+      tone: k === 'Self-harm/Suicide' ? 'danger' : k === 'Bullying/Safety' ? 'danger' : v >= 3 ? 'warn' : 'neutral',
+    }))
+
+  const negativeDays = last7CheckIns.filter((c) => c.feeling === 'sad' || c.feeling === 'worried').length
+  const lowSleepDays = sleepLogs.filter((s) => last7.includes(s.createdAt.slice(0, 10)) && (s.hoursBucket === '1-4' || s.hoursBucket === '5')).length
+
+  const patterns = [
+    negativeDays >= 3 ? { label: `Repeated worried/sad days (${negativeDays}/7)`, tone: negativeDays >= 5 ? 'danger' : 'warn' } : null,
+    lowSleepDays >= 2 ? { label: `Low sleep days (${lowSleepDays}/7)`, tone: lowSleepDays >= 4 ? 'danger' : 'warn' } : null,
+  ].filter(Boolean) as Array<{ label: string; tone: 'neutral' | 'warn' | 'danger' }>
+
+  return { themes, patterns }
 }
 
 function StudentJournalWrite() {
@@ -1651,18 +2160,31 @@ function StudentReportIncident() {
       <Modal
         open={confirm}
         onClose={() => setConfirm(false)}
-        title="Confirm submission"
-        description={`${APP_NAME} will mark this as received and share it with school staff.`}
+        title="Please confirm before submitting."
+        description="Once submitted, this report will be shared with the appropriate school authorities for review. Are you sure you want to proceed?"
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirm(false)}>
-              Cancel
+              Cancel Submission
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(false)}>
+              Go Back and Edit
             </Button>
             <Button
               onClick={() => {
+                const createdAt = new Date().toISOString()
+                const classInfo = { id: 'class_1', name: 'Grade 8A' }
                 dispatch({
                   type: 'student/addIncident',
-                  incident: { id: makeId('inc'), createdAt: new Date().toISOString(), type, description: desc.trim(), anonymous: anon, status: 'received' },
+                  incident: {
+                    id: makeId('inc'),
+                    createdAt,
+                    type,
+                    description: desc.trim(),
+                    anonymous: anon,
+                    status: 'received',
+                    context: { school: 'Nefera School', classId: classInfo.id, className: classInfo.name, submittedBy: 'student' },
+                  },
                 })
                 setConfirm(false)
                 setDesc('')
@@ -1670,7 +2192,7 @@ function StudentReportIncident() {
                 setSubmitted(true)
               }}
             >
-              Confirm
+              Confirm and Submit Report
             </Button>
           </>
         }
@@ -1685,6 +2207,7 @@ function StudentReportIncident() {
 }
 
 function StudentHelpBatchmates() {
+  const { dispatch } = useNefera()
   const [anxiety, setAnxiety] = useState<Record<string, boolean>>({})
   const [depression, setDepression] = useState<Record<string, boolean>>({})
   const [risk, setRisk] = useState<Record<string, boolean>>({})
@@ -1696,25 +2219,69 @@ function StudentHelpBatchmates() {
       emoji: '😰',
       state: anxiety,
       setState: setAnxiety,
-      items: ['Avoiding school', 'Very restless', 'Stomach aches', 'Can’t focus', 'Always worrying', 'Trouble sleeping'],
+      items: [
+        'Appears excessively worried',
+        'Seems restless or on edge',
+        'Irritable or easily upset',
+        'Difficulty concentrating',
+        'Avoids social or group activities',
+        'Shows physical signs of stress (trembling, sweating, fatigue)',
+      ],
     },
     {
       title: 'Depression signs',
       emoji: '🌧️',
       state: depression,
       setState: setDepression,
-      items: ['No interest in fun', 'Always tired', 'Feeling hopeless', 'Irritable', 'Eating changes', 'Withdrawing'],
+      items: [
+        'Seems persistently sad or low in feel',
+        'Shows loss of interest in usual activities',
+        'Appears hopeless or withdrawn',
+        'Fatigue or lack of energy',
+        'Changes in sleep or eating habits',
+        'Social withdrawal from friends or group activities',
+      ],
     },
     {
       title: 'Suicidal risk signs',
       emoji: '🆘',
       state: risk,
       setState: setRisk,
-      items: ['Talking about death', 'Giving things away', 'Sudden calm after sadness', 'Self-harm marks', 'Saying goodbye', 'Feeling trapped'],
+      items: [
+        'Talks about feeling life is not worth living',
+        'Mentions self-harm or wanting to die',
+        'Displays hopelessness or feeling trapped',
+        'Withdraws suddenly from friends or activities',
+        'Engages in risky or self-destructive behaviors',
+      ],
     },
   ] as const
 
   const totalChecked = Object.values({ ...anxiety, ...depression, ...risk }).filter(Boolean).length
+
+  function onSave() {
+    const createdAt = new Date().toISOString()
+    dispatch({
+      type: 'student/addPeerObservation',
+      observation: {
+        id: makeId('peer_obs'),
+        createdAt,
+        anxiety: Object.entries(anxiety)
+          .filter(([, checked]) => checked)
+          .map(([label]) => label),
+        depression: Object.entries(depression)
+          .filter(([, checked]) => checked)
+          .map(([label]) => label),
+        risk: Object.entries(risk)
+          .filter(([, checked]) => checked)
+          .map(([label]) => label),
+      },
+    })
+    setAnxiety({})
+    setDepression({})
+    setRisk({})
+    setToast(true)
+  }
 
   return (
     <Page
@@ -1728,7 +2295,7 @@ function StudentHelpBatchmates() {
               Message staff 💬
             </Button>
           </Link>
-          <Button className="h-14 w-full flex-1" onClick={() => setToast(true)}>
+          <Button className="h-14 w-full flex-1" disabled={totalChecked === 0} onClick={onSave}>
             Save checklist
           </Button>
         </div>
@@ -1763,9 +2330,11 @@ function StudentHelpBatchmates() {
 }
 
 function TeacherObservationChecklist() {
+  const { state, dispatch } = useNefera()
   const params = useParams()
   const [values, setValues] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState(false)
+  const student = state.teacher.students.find((s) => s.id === params.id)
 
   const items = [
     'Frequent absenteeism',
@@ -1779,7 +2348,19 @@ function TeacherObservationChecklist() {
   ]
 
   const checked = Object.values(values).filter(Boolean).length
-  const studentLabel = params.id ? `Student ${params.id}` : 'Student'
+  const studentLabel = student ? `${student.name} • ${student.grade}` : params.id ? `Student ${params.id}` : 'Student'
+
+  function onSave() {
+    const createdAt = new Date().toISOString()
+    const selectedItems = Object.entries(values)
+      .filter(([, ok]) => ok)
+      .map(([item]) => item)
+    dispatch({
+      type: 'teacher/addObservation',
+      observation: { id: makeId('t_obs'), createdAt, studentId: student?.id ?? params.id ?? 'unknown', items: selectedItems },
+    })
+    setToast(true)
+  }
 
   return (
     <Page
@@ -1791,7 +2372,7 @@ function TeacherObservationChecklist() {
           <Button className="h-14 w-full flex-1" variant="secondary" onClick={() => setValues({})}>
             Clear
           </Button>
-          <Button className="h-14 w-full flex-1" onClick={() => setToast(true)}>
+          <Button className="h-14 w-full flex-1" onClick={onSave}>
             Save observation
           </Button>
         </div>
@@ -1932,19 +2513,6 @@ function StudentProfile() {
       </div>
     </Page>
   )
-}
-
-function flagTone(flag: 'orange' | 'red' | 'crisis' | 'none') {
-  if (flag === 'orange') return 'warn'
-  if (flag === 'red' || flag === 'crisis') return 'danger'
-  return 'neutral'
-}
-
-function flagLabel(flag: 'orange' | 'red' | 'crisis' | 'none') {
-  if (flag === 'orange') return 'Watch'
-  if (flag === 'red') return 'High'
-  if (flag === 'crisis') return 'Crisis'
-  return 'None'
 }
 
 function TeacherDashboard() {
@@ -2183,7 +2751,7 @@ function ParentMessage() {
 
   function onSend() {
     const createdAt = new Date().toISOString()
-    dispatch({ type: 'parent/sendMessage', item: { id: makeId('p_msg'), createdAt, toChildId: 'child_1', body: body.trim() } })
+    dispatch({ type: 'parent/sendMessage', item: { id: makeId('p_msg'), createdAt, toChildId: 'stu_1', body: body.trim() } })
     setToast(true)
     window.setTimeout(() => navigate('/parent/dashboard', { replace: true }), 250)
   }
@@ -2224,7 +2792,7 @@ function ParentMessage() {
 }
 
 function ParentReportIncident() {
-  const { dispatch } = useNefera()
+  const { state, dispatch } = useNefera()
   const [type, setType] = useState('Bullying / Harassment')
   const [desc, setDesc] = useState('')
   const [confirm, setConfirm] = useState(false)
@@ -2232,6 +2800,7 @@ function ParentReportIncident() {
   const [toast, setToast] = useState(false)
   const canSubmit = !!desc.trim()
   const reportHint = useFirstVisitHint('nefera_hint_parent_report_incident_v1')
+  const childId = state.parent.children[0]?.id ?? 'stu_1'
   return (
     <Page emoji="🛡️" title="Report incident" subtitle="Share what you noticed. This will be sent to school staff.">
       {submitted ? (
@@ -2298,24 +2867,27 @@ function ParentReportIncident() {
       <Modal
         open={confirm}
         onClose={() => setConfirm(false)}
-        title="Confirm submission"
-        description={`${APP_NAME} will mark this as received and share it with school staff.`}
+        title="Please confirm before submitting."
+        description="Once submitted, this report will be shared with the appropriate school authorities for review. Are you sure you want to proceed?"
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirm(false)}>
-              Cancel
+              Cancel Submission
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(false)}>
+              Go Back and Edit
             </Button>
             <Button
               onClick={() => {
                 const createdAt = new Date().toISOString()
-                dispatch({ type: 'parent/addReport', item: { id: makeId('p_rep'), createdAt, type, body: desc.trim() } })
+                dispatch({ type: 'parent/addReport', item: { id: makeId('p_rep'), createdAt, type, body: desc.trim(), childId } })
                 setConfirm(false)
                 setDesc('')
                 setToast(true)
                 setSubmitted(true)
               }}
             >
-              Confirm
+              Confirm and Submit Report
             </Button>
           </>
         }
@@ -2352,6 +2924,31 @@ function CounselorDashboard() {
   const students = state.counselor.students
   const flagged = students.filter((s) => s.flags !== 'none').length
   const crisis = students.filter((s) => s.flags === 'crisis').length
+  const peerObs = state.counselor.peerObservations
+  const peerRiskSignals = peerObs.filter((o) => o.risk.length > 0).length
+  const teacherObs = state.counselor.teacherObservations
+  const reports = state.counselor.reports
+  const checkIns = state.counselor.checkIns
+  const sleepLogs = state.counselor.sleepLogs
+
+  const last7 = useMemo(() => lastDaysISO(7), [])
+  const checkInByDay = useMemo(() => latestCheckInByDay(checkIns), [checkIns])
+  const weeklySegments = useMemo(() => {
+    const counts: Record<Feeling, number> = { happy: 0, neutral: 0, flat: 0, worried: 0, sad: 0 }
+    for (const day of last7) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      counts[c.feeling]++
+    }
+    return (['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => ({
+      label: feelingLabel(f),
+      value: counts[f],
+      color: feelingPalette[f].color,
+    }))
+  }, [checkInByDay, last7])
+
+  const signals = useMemo(() => wellbeingSignals(checkIns, sleepLogs), [checkIns, sleepLogs])
+  const hasCheckInData = checkIns.length > 0 || sleepLogs.length > 0
 
   return (
     <Page emoji="🧠" title={`Welcome, ${user?.name ?? 'Counselor'}`} subtitle="Prioritize support, follow up, and document care.">
@@ -2363,6 +2960,10 @@ function CounselorDashboard() {
             <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
             <StatPill emoji="🛟" label="Crisis" value={`${crisis}`} />
             <StatPill emoji="🗂️" label="Actions" value={`${state.counselor.crisisActions.filter((a) => !a.done).length}`} />
+            <StatPill emoji="🫂" label="Peer notes" value={`${peerObs.length}`} />
+            <StatPill emoji="🆘" label="Risk signals" value={`${peerRiskSignals}`} />
+            <StatPill emoji="🧑‍🏫" label="Teacher obs" value={`${teacherObs.length}`} />
+            <StatPill emoji="🧾" label="Reports" value={`${reports.length}`} />
           </CardBody>
         </Card>
         <Card>
@@ -2370,6 +2971,9 @@ function CounselorDashboard() {
           <CardBody className="flex flex-wrap items-center gap-2">
             <Link to="/counselor/flags">
               <Button>View flags 🚩</Button>
+            </Link>
+            <Link to="/counselor/reports">
+              <Button variant="secondary">Reports 🧾</Button>
             </Link>
             <Link to="/counselor/students">
               <Button variant="secondary">All students 🧑‍🎓</Button>
@@ -2394,6 +2998,36 @@ function CounselorDashboard() {
       </div>
 
       <Card className="mt-4">
+        <CardHeader emoji="💛" title="Student check-ins" subtitle="Signals from the last 7 days." />
+        <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
+          <div className="space-y-3">
+            <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+              <DonutChart size={168} stroke={18} segments={weeklySegments} />
+            </div>
+            <ChartLegend segments={weeklySegments} />
+          </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
+            <div className="flex flex-wrap gap-2">
+              {signals.themes.map((t) => (
+                <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
+              ))}
+              {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
+              {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
+            </div>
+            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
+            <div className="flex flex-wrap gap-2">
+              {signals.patterns.map((p) => (
+                <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
+              ))}
+              {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
+              {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="mt-4">
         <CardHeader emoji="🧾" title="Crisis actions" subtitle="Track the steps you’ve taken." />
         <CardBody className="grid gap-2">
           {state.counselor.crisisActions.map((a) => (
@@ -2415,6 +3049,61 @@ function CounselorDashboard() {
               </div>
             </button>
           ))}
+        </CardBody>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader emoji="🫂" title="Peer observations" subtitle="Anonymous signals to support early identification." />
+        <CardBody className="grid gap-2">
+          {peerObs.slice(0, 6).map((o) => (
+            <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
+                  <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                    Anxiety {o.anxiety.length} • Depression {o.depression.length} • Risk {o.risk.length}
+                  </div>
+                </div>
+                {o.risk.length > 0 ? <Badge tone="danger">Risk</Badge> : <Badge tone="neutral">Info</Badge>}
+              </div>
+            </div>
+          ))}
+          {peerObs.length === 0 ? (
+            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+              No peer observations yet.
+            </div>
+          ) : null}
+        </CardBody>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader emoji="🧑‍🏫" title="Teacher observations" subtitle="Recent checklists shared for follow-up." />
+        <CardBody className="grid gap-2">
+          {teacherObs.slice(0, 6).map((o) => {
+            const student = students.find((s) => s.id === o.studentId)
+            const label = student ? `${student.name} • ${student.grade}` : `Student ${o.studentId}`
+            return (
+              <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
+                    <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                      {label} • {o.items.length} item{o.items.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  {o.items.length > 0 ? <Badge tone="warn">Observation</Badge> : <Badge tone="neutral">Info</Badge>}
+                </div>
+                {o.items.length > 0 ? (
+                  <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{o.items.join('\n')}</div>
+                ) : null}
+              </div>
+            )
+          })}
+          {teacherObs.length === 0 ? (
+            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+              No teacher observations yet.
+            </div>
+          ) : null}
         </CardBody>
       </Card>
     </Page>
@@ -2594,6 +3283,27 @@ function PrincipalDashboard() {
   const reports = state.principal.reports
   const students = state.teacher.students
   const flagged = students.filter((s) => s.flags !== 'none').length
+  const checkIns = state.principal.checkIns
+  const sleepLogs = state.principal.sleepLogs
+
+  const last7 = useMemo(() => lastDaysISO(7), [])
+  const checkInByDay = useMemo(() => latestCheckInByDay(checkIns), [checkIns])
+  const weeklySegments = useMemo(() => {
+    const counts: Record<Feeling, number> = { happy: 0, neutral: 0, flat: 0, worried: 0, sad: 0 }
+    for (const day of last7) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      counts[c.feeling]++
+    }
+    return (['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => ({
+      label: feelingLabel(f),
+      value: counts[f],
+      color: feelingPalette[f].color,
+    }))
+  }, [checkInByDay, last7])
+
+  const signals = useMemo(() => wellbeingSignals(checkIns, sleepLogs), [checkIns, sleepLogs])
+  const hasCheckInData = checkIns.length > 0 || sleepLogs.length > 0
 
   return (
     <Page emoji="🏫" title={`Welcome, ${user?.name ?? 'Principal'}`} subtitle="School-wide insight and reporting.">
@@ -2619,6 +3329,36 @@ function PrincipalDashboard() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mt-4">
+        <CardHeader emoji="💛" title="Check-in signals" subtitle="Aggregate view from the last 7 days." />
+        <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
+          <div className="space-y-3">
+            <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+              <DonutChart size={168} stroke={18} segments={weeklySegments} />
+            </div>
+            <ChartLegend segments={weeklySegments} />
+          </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
+            <div className="flex flex-wrap gap-2">
+              {signals.themes.map((t) => (
+                <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
+              ))}
+              {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
+              {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
+            </div>
+            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
+            <div className="flex flex-wrap gap-2">
+              {signals.patterns.map((p) => (
+                <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
+              ))}
+              {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
+              {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <Card className="mt-4">
         <CardHeader emoji="🛡️" title="Latest reports" subtitle="Newest items first." />
@@ -2715,6 +3455,7 @@ function PrincipalProfile() {
 const LazyStudentReports = React.lazy(() => import('./student.lazy').then((m) => ({ default: m.StudentReports })))
 const LazyStudentOpenCircle = React.lazy(() => import('./student.lazy').then((m) => ({ default: m.StudentOpenCircle })))
 const LazyCounselorStudentDetail = React.lazy(() => import('./counselor.lazy').then((m) => ({ default: m.CounselorStudentDetail })))
+const LazyCounselorReports = React.lazy(() => import('./counselor.lazy').then((m) => ({ default: m.CounselorReports })))
 const LazyCounselorAssessmentPhq9 = React.lazy(() => import('./counselor.lazy').then((m) => ({ default: m.CounselorAssessmentPhq9 })))
 const LazyCounselorAssessmentGad7 = React.lazy(() => import('./counselor.lazy').then((m) => ({ default: m.CounselorAssessmentGad7 })))
 const LazyCounselorAssessmentCssrs = React.lazy(() => import('./counselor.lazy').then((m) => ({ default: m.CounselorAssessmentCssrs })))
@@ -2793,6 +3534,7 @@ export function NeferaRoutes() {
         <Route path="/counselor" element={<RequireAuth role="counselor"><Navigate to="/counselor/dashboard" replace /></RequireAuth>} />
         <Route path="/counselor/dashboard" element={<RequireAuth role="counselor"><CounselorDashboard /></RequireAuth>} />
         <Route path="/counselor/flags" element={<RequireAuth role="counselor"><CounselorFlags /></RequireAuth>} />
+        <Route path="/counselor/reports" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorReports /></LazyBoundary></RequireAuth>} />
         <Route path="/counselor/students" element={<RequireAuth role="counselor"><CounselorStudents /></RequireAuth>} />
         <Route path="/counselor/students/:id" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorStudentDetail /></LazyBoundary></RequireAuth>} />
         <Route path="/counselor/assessments/phq9" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorAssessmentPhq9 /></LazyBoundary></RequireAuth>} />

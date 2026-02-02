@@ -1,46 +1,57 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useNefera } from './state'
-import { Badge, Button, Card, CardBody, CardHeader, Page, Select, Toast, cx } from './ui'
+import { Badge, Button, Card, CardBody, CardHeader, Modal, Page, Select, Toast, cx, flagLabel, flagTone } from './ui'
 
 function sum(nums: number[]) {
   return nums.reduce((a, b) => a + b, 0)
 }
 
-function flagTone(flag: 'orange' | 'red' | 'crisis' | 'none') {
-  switch (flag) {
-    case 'none':
-      return 'neutral'
-    case 'orange':
-      return 'warn'
-    case 'red':
-      return 'danger'
-    case 'crisis':
-      return 'danger'
-  }
+function formatShort(value: string | number) {
+  const d = new Date(value)
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function flagLabel(flag: 'orange' | 'red' | 'crisis' | 'none') {
-  switch (flag) {
-    case 'none':
-      return 'No flag'
-    case 'orange':
-      return 'Watch'
-    case 'red':
-      return 'High'
-    case 'crisis':
-      return 'Crisis'
-  }
+function phq9Severity(total: number) {
+  if (total <= 4) return { label: 'Minimal depression', action: 'Monitor; no intervention needed' }
+  if (total <= 9) return { label: 'Mild depression', action: 'Watchful waiting; lifestyle modifications' }
+  if (total <= 14) return { label: 'Moderate depression', action: 'Counselor support recommended' }
+  if (total <= 19) return { label: 'Moderately severe depression', action: 'Counselor + psychiatric evaluation' }
+  return { label: 'Severe depression', action: 'Urgent psychiatric intervention required' }
+}
+
+function gad7Severity(total: number) {
+  if (total <= 4) return { label: 'Minimal anxiety', action: 'No intervention needed' }
+  if (total <= 9) return { label: 'Mild anxiety', action: 'Monitor; suggest coping strategies' }
+  if (total <= 14) return { label: 'Moderate anxiety', action: 'Counselor support and interventions' }
+  return { label: 'Severe anxiety', action: 'Urgent psychiatric evaluation required' }
+}
+
+function cssrsRisk(answers: boolean[]) {
+  const q0 = !!answers[0]
+  const q1 = !!answers[1]
+  const q2 = !!answers[2]
+  const q3 = !!answers[3]
+  const q4 = !!answers[4]
+  const q5 = !!answers[5]
+  if (!q0 && !q1 && !q2 && !q3 && !q4 && !q5) return { level: 'None', action: '🟢 Green – Continue monitoring' }
+  if (q5) return { level: 'Extreme', action: '🚨🚨🚨 Maximum – Recent attempt/active preparation; emergency intervention' }
+  if (q4) return { level: 'High', action: '🚨 Red/Emergency – Intent + plan; psychiatric hospitalization pathway' }
+  if (q2 || q3) return { level: 'Moderate', action: '🔴 Red – Active ideation with plan; urgent assessment' }
+  if (q0 || q1) return { level: 'Low', action: '🟠 Orange – Passive ideation; counsel close follow-up' }
+  return { level: 'Low', action: '🟠 Orange – Passive ideation; counsel close follow-up' }
 }
 
 export function CounselorAssessmentPhq9() {
   const { state, dispatch } = useNefera()
   const navigate = useNavigate()
+  const [search] = useSearchParams()
   const students = state.counselor.students
-  const [studentId, setStudentId] = useState<string>(students[0]?.id ?? '')
+  const [studentId, setStudentId] = useState<string>(search.get('student') ?? students[0]?.id ?? '')
   const selected = students.find((s) => s.id === studentId) ?? students[0]
   const [answers, setAnswers] = useState<number[]>(selected?.phq9?.answers ?? Array.from({ length: 9 }, () => 0))
   const [toast, setToast] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
 
   const scaleOptions = [
     { value: '0', label: '0' },
@@ -62,10 +73,27 @@ export function CounselorAssessmentPhq9() {
   ]
 
   const total = sum(answers)
+  const sev = phq9Severity(total)
+  const q9Positive = (answers[8] ?? 0) >= 1
+  const helplines = ['Tele-MANAS 14416', 'KIRAN 1800-599-0019']
+  const messages = [
+    'Thank you for sharing this. Your feelings matter.',
+    'Please reach out to a parent or another trusted adult for support.',
+    'If you need immediate help, call a government toll-free helpline.',
+  ]
+  const suggestions = ['Try slow breathing (in 1-2-3, out 1-2-3-4).', 'Try grounding: 3 things you see, 2 you touch, 1 you hear.']
 
   function onSave() {
     const createdAt = new Date().toISOString()
     dispatch({ type: 'counselor/savePhq9', studentId: selected?.id ?? 's_1', answers, createdAt })
+    if (q9Positive && selected?.id) {
+      dispatch({
+        type: 'counselor/addSafetyEvent',
+        event: { id: `evt_${createdAt}`, createdAt, studentId: selected.id, kind: 'phq9_q9_positive', shownHelplines: helplines, shownMessages: messages, shownSuggestions: suggestions },
+      })
+      dispatch({ type: 'teacher/setStudentFlags', studentId: selected.id, flags: 'crisis' })
+      setAlertOpen(true)
+    }
     setToast(true)
   }
 
@@ -89,6 +117,7 @@ export function CounselorAssessmentPhq9() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>Total: {total}</Badge>
+            <Badge>{sev.label}</Badge>
             <Button variant="secondary" onClick={() => navigate('/counselor/dashboard')}>
               Back
             </Button>
@@ -123,6 +152,39 @@ export function CounselorAssessmentPhq9() {
       </div>
 
       <Toast open={toast} message="Saved PHQ-9." onClose={() => setToast(false)} />
+      <Modal
+        open={alertOpen}
+        onClose={() => setAlertOpen(false)}
+        title="Immediate support"
+        description="A response indicated possible self-harm risk. Show helplines and administer C-SSRS within 1 hour."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => navigate(`/counselor/assessments/cssrs?student=${encodeURIComponent(selected?.id ?? '')}`)}>
+              Open C-SSRS
+            </Button>
+            <Button onClick={() => setAlertOpen(false)}>Done</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+            {messages.join('\n')}
+          </div>
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+            <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">Government toll-free helplines</div>
+            <div className="mt-2 grid gap-1">
+              {helplines.map((h) => (
+                <div key={h} className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">
+                  {h}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+            {suggestions.join('\n')}
+          </div>
+        </div>
+      </Modal>
     </Page>
   )
 }
@@ -130,8 +192,9 @@ export function CounselorAssessmentPhq9() {
 export function CounselorAssessmentGad7() {
   const { state, dispatch } = useNefera()
   const navigate = useNavigate()
+  const [search] = useSearchParams()
   const students = state.counselor.students
-  const [studentId, setStudentId] = useState<string>(students[0]?.id ?? '')
+  const [studentId, setStudentId] = useState<string>(search.get('student') ?? students[0]?.id ?? '')
   const selected = students.find((s) => s.id === studentId) ?? students[0]
   const [answers, setAnswers] = useState<number[]>(selected?.gad7?.answers ?? Array.from({ length: 7 }, () => 0))
   const [toast, setToast] = useState(false)
@@ -154,6 +217,7 @@ export function CounselorAssessmentGad7() {
   ]
 
   const total = sum(answers)
+  const sev = gad7Severity(total)
 
   function onSave() {
     const createdAt = new Date().toISOString()
@@ -181,6 +245,7 @@ export function CounselorAssessmentGad7() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>Total: {total}</Badge>
+            <Badge>{sev.label}</Badge>
             <Button variant="secondary" onClick={() => navigate('/counselor/dashboard')}>
               Back
             </Button>
@@ -222,11 +287,13 @@ export function CounselorAssessmentGad7() {
 export function CounselorAssessmentCssrs() {
   const { state, dispatch } = useNefera()
   const navigate = useNavigate()
+  const [search] = useSearchParams()
   const students = state.counselor.students
-  const [studentId, setStudentId] = useState<string>(students[0]?.id ?? '')
+  const [studentId, setStudentId] = useState<string>(search.get('student') ?? students[0]?.id ?? '')
   const selected = students.find((s) => s.id === studentId) ?? students[0]
   const [answers, setAnswers] = useState<boolean[]>(selected?.cssrs?.answers ?? Array.from({ length: 6 }, () => false))
   const [toast, setToast] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
 
   const items = [
     'Wish to be dead',
@@ -238,10 +305,27 @@ export function CounselorAssessmentCssrs() {
   ]
 
   const positive = answers.filter(Boolean).length
+  const risk = cssrsRisk(answers)
+  const helplines = ['Tele-MANAS 14416', 'KIRAN 1800-599-0019']
+  const messages = [
+    'Thank you for recording this screening.',
+    'Please follow your school’s safety protocol and connect the student with a trusted adult.',
+    'If there is immediate danger, use emergency services.',
+  ]
+  const suggestions = ['Calming breath (in 1-2-3, out 1-2-3-4).', 'Grounding: 3 things you see, 2 you touch, 1 you hear.']
 
   function onSave() {
     const createdAt = new Date().toISOString()
     dispatch({ type: 'counselor/saveCssrs', studentId: selected?.id ?? 's_1', answers, createdAt })
+    if (positive > 0 && selected?.id) {
+      dispatch({
+        type: 'counselor/addSafetyEvent',
+        event: { id: `evt_${createdAt}`, createdAt, studentId: selected.id, kind: 'cssrs_positive', shownHelplines: helplines, shownMessages: messages, shownSuggestions: suggestions },
+      })
+      const nextFlag = risk.level === 'Extreme' || risk.level === 'High' ? 'crisis' : risk.level === 'Moderate' ? 'red' : 'orange'
+      dispatch({ type: 'teacher/setStudentFlags', studentId: selected.id, flags: nextFlag })
+      setAlertOpen(true)
+    }
     setToast(true)
   }
 
@@ -265,6 +349,7 @@ export function CounselorAssessmentCssrs() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{positive} positive</Badge>
+            <Badge>{risk.action}</Badge>
             <Button variant="secondary" onClick={() => navigate('/counselor/dashboard')}>
               Back
             </Button>
@@ -307,6 +392,39 @@ export function CounselorAssessmentCssrs() {
       </div>
 
       <Toast open={toast} message="Saved C-SSRS." onClose={() => setToast(false)} />
+      <Modal
+        open={alertOpen}
+        onClose={() => setAlertOpen(false)}
+        title="Support and safety"
+        description="Show helplines and document what was displayed."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => navigate('/counselor/flags')}>
+              View flags
+            </Button>
+            <Button onClick={() => setAlertOpen(false)}>Done</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+            {messages.join('\n')}
+          </div>
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+            <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">Government toll-free helplines</div>
+            <div className="mt-2 grid gap-1">
+              {helplines.map((h) => (
+                <div key={h} className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">
+                  {h}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+            {suggestions.join('\n')}
+          </div>
+        </div>
+      </Modal>
     </Page>
   )
 }
@@ -384,6 +502,7 @@ export function CounselorStudentDetail() {
     'Active thoughts with intent and plan',
     'Suicidal behavior',
   ]
+  const teacherObs = state.counselor.teacherObservations.filter((o) => o.studentId === studentId)
 
   return (
     <Page emoji="🧑‍🎓" title={student.name} subtitle="Questionnaires and follow-up planning.">
@@ -413,6 +532,33 @@ export function CounselorStudentDetail() {
       </Card>
 
       <div className="mt-4 grid gap-4">
+        <Card>
+          <CardHeader emoji="🧑‍🏫" title="Teacher observations" subtitle="Recent checklists to inform follow-up." />
+          <CardBody className="grid gap-2">
+            {teacherObs.slice(0, 6).map((o) => (
+              <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
+                    <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                      {o.items.length} item{o.items.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  {o.items.length > 0 ? <Badge tone="warn">Observation</Badge> : <Badge tone="neutral">Info</Badge>}
+                </div>
+                {o.items.length > 0 ? (
+                  <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{o.items.join('\n')}</div>
+                ) : null}
+              </div>
+            ))}
+            {teacherObs.length === 0 ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+                No teacher observations saved for this student yet.
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
+
         <Card>
           <CardHeader emoji="📋" title="PHQ-9" subtitle={`Total: ${sum(phq9)}`} />
           <CardBody className="grid gap-3">
@@ -481,6 +627,108 @@ export function CounselorStudentDetail() {
       </div>
 
       <Toast open={toast} message="Saved questionnaires." onClose={() => setToast(false)} />
+    </Page>
+  )
+}
+
+export function CounselorReports() {
+  const { state, dispatch } = useNefera()
+  const navigate = useNavigate()
+  const reports = state.counselor.reports
+  const now = reports.reduce((max, r) => {
+    const t = Date.parse(r.createdAt)
+    if (Number.isNaN(t)) return max
+    return Math.max(max, t)
+  }, 0)
+  const weekMs = 1000 * 60 * 60 * 24 * 7
+  const recentCountsByClassId: Record<string, number> = {}
+  for (const r of reports) {
+    const classId = r.context?.classId
+    if (!classId) continue
+    const createdMs = Date.parse(r.createdAt)
+    if (Number.isNaN(createdMs)) continue
+    if (now - createdMs > weekMs) continue
+    recentCountsByClassId[classId] = (recentCountsByClassId[classId] ?? 0) + 1
+  }
+
+  function isHighPriority(r: (typeof reports)[number]) {
+    const severe = /(self-harm|suicide|weapon|assault)/i.test(r.type) || /(immediate danger|kill|die|hurt myself)/i.test(r.description)
+    const classId = r.context?.classId
+    const repeated = classId ? (recentCountsByClassId[classId] ?? 0) >= 3 : false
+    return severe || repeated
+  }
+
+  const ordered = [...reports].sort((a, b) => {
+    const p = Number(isHighPriority(b)) - Number(isHighPriority(a))
+    if (p !== 0) return p
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt)
+  })
+
+  return (
+    <Page emoji="🧾" title="Reports" subtitle="Safety and wellbeing reports.">
+      <div className="grid gap-3">
+        {ordered.map((r) => (
+          <Card key={r.id}>
+            <CardBody className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{r.type}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isHighPriority(r) ? <Badge tone="danger">High priority</Badge> : null}
+                  <Badge tone={r.status === 'resolved' ? 'ok' : r.status === 'reviewing' ? 'warn' : 'neutral'}>{r.status}</Badge>
+                </div>
+              </div>
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                {r.context?.school ? `School: ${r.context.school}` : null}
+                {r.context?.className ? `${r.context?.school ? ' • ' : ''}Class: ${r.context.className}` : null}
+                {r.context?.submittedBy ? `${r.context?.school || r.context?.className ? ' • ' : ''}Submitted by: ${r.context.submittedBy}` : null}
+              </div>
+              <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{r.description}</div>
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                Anonymous: {r.anonymous ? 'Yes' : 'No'}
+              </div>
+              {!r.anonymous && r.context?.studentName ? (
+                <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Student: {r.context.studentName}</div>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="min-w-56">
+                  <Select
+                    value={r.status}
+                    onChange={(v) => dispatch({ type: 'reports/setStatus', reportId: r.id, status: v as 'received' | 'reviewing' | 'resolved' })}
+                    options={[
+                      { value: 'received', label: 'received' },
+                      { value: 'reviewing', label: 'reviewing' },
+                      { value: 'resolved', label: 'resolved' },
+                    ]}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => dispatch({ type: 'reports/setStatus', reportId: r.id, status: r.status === 'resolved' ? 'reviewing' : 'resolved' })}
+                >
+                  {r.status === 'resolved' ? 'Re-open' : 'Mark resolved'}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+        ))}
+
+        {reports.length === 0 ? (
+          <Card>
+            <CardHeader emoji="🌿" title="No reports yet" subtitle="Reports will appear here as they are submitted." />
+            <CardBody className="text-sm text-[rgb(var(--nefera-muted))]">
+              This page helps counselors review and coordinate follow-up.
+            </CardBody>
+          </Card>
+        ) : null}
+
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => navigate('/counselor/dashboard')}>
+            Back
+          </Button>
+        </div>
+      </div>
     </Page>
   )
 }

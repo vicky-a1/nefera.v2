@@ -231,6 +231,35 @@ export function Chip({
   )
 }
 
+export type StudentFlag = 'orange' | 'red' | 'crisis' | 'none'
+
+export function flagTone(flag: StudentFlag): 'neutral' | 'warn' | 'danger' {
+  switch (flag) {
+    case 'orange':
+      return 'warn'
+    case 'red':
+    case 'crisis':
+      return 'danger'
+    case 'none':
+    default:
+      return 'neutral'
+  }
+}
+
+export function flagLabel(flag: StudentFlag) {
+  switch (flag) {
+    case 'orange':
+      return 'Watch'
+    case 'red':
+      return 'High'
+    case 'crisis':
+      return 'Crisis'
+    case 'none':
+    default:
+      return 'None'
+  }
+}
+
 export function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'ok' | 'warn' | 'danger' }) {
   const tones = {
     neutral: 'bg-black/5 text-[rgb(var(--nefera-ink))] border-[rgb(var(--nefera-border))]',

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { makeId, useAuth, useNefera } from './state'
+import { type Feeling, feelingLabel, getTodayISO, makeId, useAuth, useNefera } from './state'
 import { Badge, Button, Card, CardBody, CardHeader, ChartLegend, Chip, Divider, DonutChart, LineSpark, MiniBar, Page, TextArea } from './ui'
 
 function formatShort(value: string | number) {
@@ -31,23 +31,115 @@ function useFirstVisitHint(key: string) {
 
 export function StudentReports() {
   const { state } = useNefera()
-  const hasReportData = state.student.checkIns.length > 0
-  const weekly = [
-    { label: 'Happy', value: 9, color: 'rgb(var(--nefera-feeling-happy))' },
-    { label: 'Neutral', value: 6, color: 'rgb(var(--nefera-feeling-neutral))' },
-    { label: 'Flat', value: 5, color: 'rgb(var(--nefera-feeling-flat))' },
-    { label: 'Worried', value: 4, color: 'rgb(var(--nefera-feeling-worried))' },
-    { label: 'Sad', value: 3, color: 'rgb(var(--nefera-feeling-sad))' },
-  ]
-  const trend = [2.3, 2.6, 2.8, 2.4, 2.9, 3.1, 2.7, 3.0, 3.2, 3.1, 3.3, 3.5]
-  const stressors = [
-    { label: 'Homework', value: 12 },
-    { label: 'Friends', value: 9 },
-    { label: 'Sleep', value: 8 },
-    { label: 'Family', value: 6 },
-    { label: 'Social media', value: 5 },
-  ]
-  const max = Math.max(...stressors.map((s) => s.value))
+  const checkIns = state.student.checkIns
+  const hasReportData = checkIns.length > 0
+
+  const last7 = useMemo(() => {
+    const base = new Date(getTodayISO())
+    const days: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base)
+      d.setDate(d.getDate() - i)
+      days.push(d.toISOString().slice(0, 10))
+    }
+    return days
+  }, [])
+
+  const last30 = useMemo(() => {
+    const base = new Date(getTodayISO())
+    const days: string[] = []
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(base)
+      d.setDate(d.getDate() - i)
+      days.push(d.toISOString().slice(0, 10))
+    }
+    return days.reverse()
+  }, [])
+
+  const checkInByDay = useMemo(() => {
+    const map = new Map<string, (typeof checkIns)[number]>()
+    for (const c of checkIns) {
+      const day = c.createdAt.slice(0, 10)
+      const prev = map.get(day)
+      if (!prev || prev.createdAt < c.createdAt) map.set(day, c)
+    }
+    return map
+  }, [checkIns])
+
+  const weekly = useMemo(() => {
+    const counts: Record<Feeling, number> = { happy: 0, neutral: 0, flat: 0, worried: 0, sad: 0 }
+    for (const day of last7) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      counts[c.feeling]++
+    }
+    return (['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => ({
+      label: feelingLabel(f),
+      value: counts[f],
+      color: `rgb(var(--nefera-feeling-${f}))`,
+    }))
+  }, [checkInByDay, last7])
+
+  const trend = useMemo(() => {
+    const baseMap: Record<Feeling, number> = { happy: 4, neutral: 3, flat: 2, worried: 2, sad: 1 }
+    const initial = { lastValue: 2.6, values: [] as number[] }
+    return last30.reduce((acc, day) => {
+      const c = checkInByDay.get(day)
+      const next = c ? baseMap[c.feeling] : acc.lastValue
+      return { lastValue: next, values: [...acc.values, next] }
+    }, initial).values
+  }, [checkInByDay, last30])
+
+  const stressors = useMemo(() => {
+    const buckets: Record<string, number> = {}
+    function bump(k: string) {
+      buckets[k] = (buckets[k] ?? 0) + 1
+    }
+
+    function categorize(text: string) {
+      const v = text.toLowerCase()
+      if (/(exam|test|homework|assignment|deadline|grade|school work|schoolwork|stud)/.test(v)) return 'Studies'
+      if (/(sleep|tired|energy|bed|wake)/.test(v)) return 'Sleep issues'
+      if (/(friend|social|classmate|left out|alone|group)/.test(v)) return 'Social concerns'
+      if (/(screen|phone|social media|media|tv)/.test(v)) return 'Screen time & Comparison'
+      if (/(family|mom|dad|parent|guardian|home)/.test(v)) return 'Family-related Concerns'
+      return 'Other'
+    }
+
+    for (const day of last7) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      for (const s of (c.answers.mainSelections ?? []).filter(Boolean)) bump(categorize(String(s)))
+      const other = String(c.answers.mainSelectionsOther ?? '').trim()
+      if (other) bump(categorize(other))
+      if (typeof c.answers.flatSleepLastNight === 'string') bump(categorize(c.answers.flatSleepLastNight))
+      if (typeof c.answers.worriedMadeHard === 'string') bump(categorize(c.answers.worriedMadeHard))
+      if (typeof c.answers.sadHardToEnjoy === 'string') bump(categorize(c.answers.sadHardToEnjoy))
+    }
+
+    return Object.entries(buckets)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([label, value]) => ({ label, value }))
+  }, [checkInByDay, last7])
+
+  const max = Math.max(1, ...stressors.map((s) => s.value))
+
+  const overview = useMemo(() => {
+    const counts = { positive: 0, neutral: 0, stressed: 0, down: 0 }
+    for (const day of last7) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      if (c.feeling === 'happy') counts.positive++
+      else if (c.feeling === 'neutral') counts.neutral++
+      else if (c.feeling === 'worried') counts.stressed++
+      else counts.down++
+    }
+    const total = counts.positive + counts.neutral + counts.stressed + counts.down
+    const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0)
+    return { ...counts, total, pct }
+  }, [checkInByDay, last7])
+
   return (
     <Page emoji="📊" title="Activity reports" subtitle="A calm view of patterns — not judgement.">
       {!hasReportData ? (
@@ -80,6 +172,34 @@ export function StudentReports() {
                 </div>
                 <div className="space-y-4">
                   <ChartLegend segments={weekly} />
+                  <div className="rounded-2xl border border-white/70 bg-white/55 p-4 text-sm text-[rgb(var(--nefera-muted))] shadow-lg shadow-black/5">
+                    <div className="grid gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[rgb(var(--nefera-ink))]">Positive days</span>
+                        <span>
+                          {overview.positive} days ({overview.pct(overview.positive)}%)
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[rgb(var(--nefera-ink))]">Neutral days</span>
+                        <span>
+                          {overview.neutral} days ({overview.pct(overview.neutral)}%)
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[rgb(var(--nefera-ink))]">Stressed days</span>
+                        <span>
+                          {overview.stressed} days ({overview.pct(overview.stressed)}%)
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-[rgb(var(--nefera-ink))]">Down days</span>
+                        <span>
+                          {overview.down} days ({overview.pct(overview.down)}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="grid gap-3">
                     {weekly.map((s) => (
                       <div key={s.label} className="space-y-2">
@@ -130,17 +250,23 @@ export function StudentReports() {
                 ))}
               </>
             ) : (
-              stressors.map((s) => (
-                <div key={s.label} className="rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
-                  <div className="flex items-center justify-between text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">
-                    <span>{s.label}</span>
-                    <span className="text-[rgb(var(--nefera-muted))]">{s.value}</span>
+              stressors.length ? (
+                stressors.map((s) => (
+                  <div key={s.label} className="rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+                    <div className="flex items-center justify-between text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">
+                      <span>{s.label}</span>
+                      <span className="text-[rgb(var(--nefera-muted))]">{s.value}</span>
+                    </div>
+                    <div className="mt-3">
+                      <MiniBar value={s.value} max={max} />
+                    </div>
                   </div>
-                  <div className="mt-3">
-                    <MiniBar value={s.value} max={max} />
-                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/70 bg-white/55 p-6 text-sm text-[rgb(var(--nefera-muted))] shadow-lg shadow-black/5">
+                  Do a few check-ins to see what shows up most often.
                 </div>
-              ))
+              )
             )}
           </CardBody>
         </Card>
