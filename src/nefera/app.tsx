@@ -500,6 +500,7 @@ function RoleEntry() {
 function StudentDashboard() {
   const { user } = useAuth()
   const { state } = useNefera()
+  const navigate = useNavigate()
   const feelingHint = useFirstVisitHint('nefera_hint_feeling_checkin_v1')
   const dayStreak = streakFromISODateList(state.student.checkIns.map((c) => c.createdAt.slice(0, 10)))
   const journalStreak = streakFromISODateList(state.student.journal.map((j) => j.dateKey))
@@ -690,9 +691,15 @@ function StudentDashboard() {
         <Card>
           <CardBody className="space-y-4">
             <Section title="Your space" subtitle="Gentle tools designed for real school days." />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => navigate('/student/journal/write')}>Write Journal</Button>
+              <Button onClick={() => navigate('/student/journal/past')}>View Past Journals</Button>
+              <Button onClick={() => navigate('/student/peer-input')}>Peer Observation</Button>
+            </div>
             <div className="grid grid-cols-1 gap-3">
               {[
-                { to: '/student/journal/write', title: 'Journal', icon: '📝', desc: 'Write it out, softly.' },
+                { to: '/student/journal/write', title: 'Write journal', icon: '📝', desc: 'Write it out, softly.' },
+                { to: '/student/journal/past', title: 'Past journals', icon: '📚', desc: 'Look back with kindness.' },
                 ...(state.schoolConfig.features.reports ? [{ to: '/student/reports', title: 'Reports', icon: '📊', desc: 'Patterns over time.' }] : []),
                 { to: '/student/habits', title: 'Habits', icon: '🔥', desc: 'Tiny routines, big wins.' },
                 { to: '/student/soul-space', title: 'Soul Space', icon: '🌿', desc: 'Calm tools on demand.' },
@@ -1622,7 +1629,7 @@ function StudentJournalPast() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatDayLabel(d.dateKey)}</div>
                     <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
-                      {d.entries.length} entry{d.entries.length === 1 ? '' : 'ies'}
+                      {d.entries.length} entr{d.entries.length === 1 ? 'y' : 'ies'}
                     </div>
                   </div>
                   <div className="grid gap-3">
@@ -2116,6 +2123,174 @@ function StudentInbox() {
   )
 }
 
+function TeacherInbox() {
+  const { state, dispatch } = useNefera()
+  const [openId, setOpenId] = useState<string | null>(null)
+  const msg = state.teacher.inbox.find((m) => m.id === openId) ?? null
+  const unread = state.teacher.inbox.filter((m) => !m.readAt).length
+  return (
+    <Page emoji="📥" title="Inbox" subtitle={`${unread} unread message${unread === 1 ? '' : 's'}.`}>
+      <div className="grid gap-3">
+        {state.teacher.inbox.map((m) => {
+          const student = m.toStudentId ? state.teacher.students.find((s) => s.id === m.toStudentId) : undefined
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                setOpenId(m.id)
+                dispatch({ type: 'teacher/markMessageRead', messageId: m.id })
+              }}
+              className="text-left"
+            >
+              <Card className={cx('transition hover:bg-black/5', m.readAt ? 'opacity-90' : '')}>
+                <CardBody className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{m.subject}</div>
+                    {!m.readAt ? <Badge tone="ok">New</Badge> : <Badge>Read</Badge>}
+                  </div>
+                  <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                    {m.fromName} • {formatShort(m.createdAt)}
+                    {student ? ` • ${student.name}` : ''}
+                  </div>
+                  <div className="text-sm text-[rgb(var(--nefera-muted))]">{m.body}</div>
+                </CardBody>
+              </Card>
+            </button>
+          )
+        })}
+      </div>
+      <Modal
+        open={!!msg}
+        onClose={() => setOpenId(null)}
+        title={msg?.subject ?? 'Message'}
+        description={msg ? `${msg.fromName} • ${formatShort(msg.createdAt)}` : undefined}
+        footer={
+          <Button variant="ghost" onClick={() => setOpenId(null)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">
+          {msg?.body}
+        </div>
+      </Modal>
+    </Page>
+  )
+}
+
+function CounselorInbox() {
+  const { state, dispatch } = useNefera()
+  const [openId, setOpenId] = useState<string | null>(null)
+  const msg = state.counselor.inbox.find((m) => m.id === openId) ?? null
+  const unread = state.counselor.inbox.filter((m) => !m.readAt).length
+  return (
+    <Page emoji="📥" title="Inbox" subtitle={`${unread} unread message${unread === 1 ? '' : 's'}.`}>
+      <div className="grid gap-3">
+        {state.counselor.inbox.map((m) => {
+          const student = m.toStudentId ? state.counselor.students.find((s) => s.id === m.toStudentId) : undefined
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                setOpenId(m.id)
+                dispatch({ type: 'counselor/markMessageRead', messageId: m.id })
+              }}
+              className="text-left"
+            >
+              <Card className={cx('transition hover:bg-black/5', m.readAt ? 'opacity-90' : '')}>
+                <CardBody className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{m.subject}</div>
+                    {!m.readAt ? <Badge tone="ok">New</Badge> : <Badge>Read</Badge>}
+                  </div>
+                  <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                    {m.fromName} • {formatShort(m.createdAt)}
+                    {student ? ` • ${student.name}` : ''}
+                  </div>
+                  <div className="text-sm text-[rgb(var(--nefera-muted))]">{m.body}</div>
+                </CardBody>
+              </Card>
+            </button>
+          )
+        })}
+      </div>
+      <Modal
+        open={!!msg}
+        onClose={() => setOpenId(null)}
+        title={msg?.subject ?? 'Message'}
+        description={msg ? `${msg.fromName} • ${formatShort(msg.createdAt)}` : undefined}
+        footer={
+          <Button variant="ghost" onClick={() => setOpenId(null)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">
+          {msg?.body}
+        </div>
+      </Modal>
+    </Page>
+  )
+}
+
+function PrincipalInbox() {
+  const { state, dispatch } = useNefera()
+  const [openId, setOpenId] = useState<string | null>(null)
+  const msg = state.principal.inbox.find((m) => m.id === openId) ?? null
+  const unread = state.principal.inbox.filter((m) => !m.readAt).length
+  return (
+    <Page emoji="📥" title="Inbox" subtitle={`${unread} unread message${unread === 1 ? '' : 's'}.`}>
+      <div className="grid gap-3">
+        {state.principal.inbox.map((m) => {
+          const student = m.toStudentId ? state.counselor.students.find((s) => s.id === m.toStudentId) : undefined
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                setOpenId(m.id)
+                dispatch({ type: 'principal/markMessageRead', messageId: m.id })
+              }}
+              className="text-left"
+            >
+              <Card className={cx('transition hover:bg-black/5', m.readAt ? 'opacity-90' : '')}>
+                <CardBody className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{m.subject}</div>
+                    {!m.readAt ? <Badge tone="ok">New</Badge> : <Badge>Read</Badge>}
+                  </div>
+                  <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                    {m.fromName} • {formatShort(m.createdAt)}
+                    {student ? ` • ${student.name}` : ''}
+                  </div>
+                  <div className="text-sm text-[rgb(var(--nefera-muted))]">{m.body}</div>
+                </CardBody>
+              </Card>
+            </button>
+          )
+        })}
+      </div>
+      <Modal
+        open={!!msg}
+        onClose={() => setOpenId(null)}
+        title={msg?.subject ?? 'Message'}
+        description={msg ? `${msg.fromName} • ${formatShort(msg.createdAt)}` : undefined}
+        footer={
+          <Button variant="ghost" onClick={() => setOpenId(null)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">
+          {msg?.body}
+        </div>
+      </Modal>
+    </Page>
+  )
+}
+
 function StudentReportIncident() {
   const { state, dispatch } = useNefera()
   const [type, setType] = useState('Bullying / Harassment')
@@ -2393,6 +2568,9 @@ function TeacherObservationChecklist() {
   const params = useParams()
   const [values, setValues] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState(false)
+  const [messageOpen, setMessageOpen] = useState(false)
+  const [messageBody, setMessageBody] = useState('')
+  const [messageToast, setMessageToast] = useState(false)
   const student = state.teacher.students.find((s) => s.id === params.id)
 
   const items = [
@@ -2404,6 +2582,7 @@ function TeacherObservationChecklist() {
     'Conflict with peers',
     'Physical complaints (headache/stomach)',
     'Signs of self-harm concern',
+    'Other',
   ]
 
   const checked = Object.values(values).filter(Boolean).length
@@ -2428,6 +2607,9 @@ function TeacherObservationChecklist() {
       subtitle={`A quick checklist for ${studentLabel}.`}
       right={
         <div className="flex w-full gap-2">
+          <Button className="h-14 w-full flex-1" variant="secondary" onClick={() => setMessageOpen(true)}>
+            Message parent 💬
+          </Button>
           <Button className="h-14 w-full flex-1" variant="secondary" onClick={() => setValues({})}>
             Clear
           </Button>
@@ -2455,6 +2637,54 @@ function TeacherObservationChecklist() {
         </Card>
       </div>
       <Toast open={toast} message="Saved. Thank you for noticing." onClose={() => setToast(false)} />
+      <Toast open={messageToast} message="Sent to parent." onClose={() => setMessageToast(false)} />
+      <Modal
+        open={messageOpen}
+        onClose={() => {
+          setMessageOpen(false)
+          setMessageBody('')
+        }}
+        title="💬 Message parent"
+        description={student ? `Regarding ${student.name}.` : 'Send a note to the parent.'}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setMessageOpen(false)
+                setMessageBody('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={messageBody.trim().length === 0}
+              onClick={() => {
+                const createdAt = new Date().toISOString()
+                dispatch({
+                  type: 'teacher/messageParent',
+                  item: { id: makeId('msg'), createdAt, childId: student?.id ?? params.id ?? 'unknown', body: messageBody.trim() },
+                })
+                setMessageOpen(false)
+                setMessageBody('')
+                setMessageToast(true)
+              }}
+            >
+              Send
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Message</div>
+          <TextArea
+            value={messageBody}
+            onChange={(e) => setMessageBody(e.target.value)}
+            placeholder="Share a gentle update, and what the parent can do next."
+            rows={6}
+          />
+        </div>
+      </Modal>
     </Page>
   )
 }
@@ -2488,14 +2718,14 @@ function ParentObservationChecklist() {
         <ChecklistGroup
           title="💛 Feelings & connection"
           subtitle="What feels different lately?"
-          items={['Withdrawn from family', 'More irritable', 'Sad or tearful', 'Anxious or worried', 'Less interest in hobbies', 'Avoiding school talk']}
+          items={['Withdrawn from family', 'More irritable', 'Sad or tearful', 'Anxious or worried', 'Less interest in hobbies', 'Avoiding school talk', 'Other']}
           values={feelings}
           onToggle={(item, checked) => setFeelings((m) => ({ ...m, [item]: checked }))}
         />
         <ChecklistGroup
           title="🌙 Sleep & habits"
           subtitle="Small shifts can be meaningful."
-          items={['Trouble falling asleep', 'Sleeping too much', 'Eating changes', 'Low energy', 'Headache or stomach aches', 'Too much screen time']}
+          items={['Trouble falling asleep', 'Sleeping too much', 'Eating changes', 'Low energy', 'Headache or stomach aches', 'Too much screen time', 'Other']}
           values={habits}
           onToggle={(item, checked) => setHabits((m) => ({ ...m, [item]: checked }))}
         />
@@ -2577,6 +2807,7 @@ function StudentProfile() {
 function TeacherDashboard() {
   const { state, dispatch } = useNefera()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const students = state.teacher.students
   const flagged = students.filter((s) => s.flags !== 'none').length
   const crisis = students.filter((s) => s.flags === 'crisis').length
@@ -2605,7 +2836,12 @@ function TeacherDashboard() {
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-2">
           <Card className="space-y-4">
-          <CardHeader emoji="📚" title="Today" subtitle="A quick snapshot to guide support." />
+          <CardHeader
+            emoji="📚"
+            title="Today"
+            subtitle="A quick snapshot to guide support."
+            right={<Button onClick={() => navigate('/teacher/inbox')}>Inbox 📥</Button>}
+          />
           <CardBody className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
@@ -2621,6 +2857,9 @@ function TeacherDashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <Link to="/teacher/broadcast">
                 <Button>Broadcast 📣</Button>
+              </Link>
+              <Link to="/teacher/inbox">
+                <Button variant="secondary">Inbox 📥</Button>
               </Link>
               <Link to="/teacher/students">
                 <Button variant="secondary">View students</Button>
@@ -2850,6 +3089,7 @@ function ParentDashboard() {
   const child = state.parent.children[0]
   const childId = child?.id ?? 'stu_1'
   const todayKey = getTodayISO()
+  const [openHistoryId, setOpenHistoryId] = useState<string | null>(null)
 
   function parseGradeNumber(value: string | undefined) {
     const text = String(value ?? '')
@@ -2878,6 +3118,87 @@ function ParentDashboard() {
     return { total, pctByFeeling: { happy: pct(counts.happy), neutral: pct(counts.neutral), flat: pct(counts.flat), worried: pct(counts.worried), sad: pct(counts.sad) } }
   }, [checkInByDay, last7Days])
   const journalToday = state.student.journal.some((j) => j.dateKey === todayKey)
+
+  const historyItems = useMemo(() => {
+    const received = state.parent.inbox
+      .filter((m) => !m.toStudentId || m.toStudentId === childId)
+      .map((m) => ({
+        kind: 'inbox' as const,
+        id: m.id,
+        createdAt: m.createdAt,
+        title: m.subject,
+        subtitle: `${m.fromName} • ${formatShort(m.createdAt)}`,
+        body: m.body,
+        readAt: m.readAt,
+      }))
+
+    const sent = state.parent.sent
+      .filter((m) => m.childId === childId)
+      .map((m) => ({
+        kind: 'sent' as const,
+        id: m.id,
+        createdAt: m.createdAt,
+        title: `Message to ${m.toRole}`,
+        subtitle: `${formatShort(m.createdAt)}`,
+        body: m.body,
+      }))
+
+    const reports = state.parent.reports
+      .filter((r) => r.childId === childId)
+      .map((r) => ({
+        kind: 'report' as const,
+        id: r.id,
+        createdAt: r.createdAt,
+        title: `Incident report: ${r.type}`,
+        subtitle: `${formatShort(r.createdAt)} • ${r.status}`,
+        body: r.body,
+        status: r.status,
+        readAtBySchool: r.readAtBySchool,
+        closedAt: r.closedAt,
+        closureNote: r.closureNote,
+      }))
+
+    const all = [...received, ...sent, ...reports].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    return all.slice(0, 10)
+  }, [childId, state.parent.inbox, state.parent.reports, state.parent.sent])
+
+  const messageAndReportHistory = useMemo(() => {
+    const sentMessages = state.parent.sent
+      .filter((m) => m.childId === childId)
+      .map((m) => ({
+        kind: 'message' as const,
+        id: m.id,
+        text: m.body,
+        sentAt: m.sentAt,
+        editedAt: m.editedAt,
+        status: 'open' as const,
+        readAtBySchool: undefined as string | undefined,
+        closedAt: undefined as string | undefined,
+      }))
+
+    const reportedIncidents = state.parent.reports
+      .filter((r) => r.childId === childId)
+      .map((r) => ({
+        kind: 'report' as const,
+        id: r.id,
+        text: r.body,
+        sentAt: r.createdAt,
+        editedAt: undefined as string | undefined,
+        status: r.status === 'resolved' ? ('closed' as const) : ('open' as const),
+        readAtBySchool: r.readAtBySchool,
+        closedAt: r.closedAt,
+        closureNote: r.closureNote,
+      }))
+
+    return [...sentMessages, ...reportedIncidents].sort((a, b) => Date.parse(b.sentAt) - Date.parse(a.sentAt))
+  }, [childId, state.parent.reports, state.parent.sent])
+
+  const openHistoryItem = historyItems.find((x) => x.id === openHistoryId) ?? null
+
+  function previewText(text: string, max = 140) {
+    const t = String(text ?? '').trim()
+    return t.length > max ? `${t.slice(0, max)}…` : t
+  }
 
   return (
     <Page emoji="👪" title={`Welcome, ${user?.name ?? 'Parent'}`} subtitle="A calm overview and simple next steps.">
@@ -3058,9 +3379,134 @@ function ParentDashboard() {
                 </CardBody>
               </Card>
             ) : null}
+
+            {(canMessageSchool || canReportIncident) ? (
+              <Card className="space-y-4">
+                <CardHeader
+                  emoji="🗂️"
+                  title="History"
+                  subtitle="Messages and incident reports (latest first)."
+                  right={
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {canMessageSchool ? (
+                        <Link to="/parent/message">
+                          <Button size="sm" variant="secondary">
+                            Message school
+                          </Button>
+                        </Link>
+                      ) : null}
+                      {canReportIncident ? (
+                        <Link to="/parent/report-incident">
+                          <Button size="sm" variant="secondary">
+                            Report incident
+                          </Button>
+                        </Link>
+                      ) : null}
+                    </div>
+                  }
+                />
+                <CardBody className="space-y-4">
+                  <div className="grid gap-2">
+                    {historyItems.map((x) => (
+                      <button
+                        key={x.id}
+                        type="button"
+                        className="text-left"
+                        onClick={() => {
+                          setOpenHistoryId(x.id)
+                        }}
+                      >
+                        <Card className="transition hover:bg-black/5">
+                          <CardBody className="space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0 truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{x.title}</div>
+                              {x.kind === 'inbox' ? (
+                                !x.readAt ? (
+                                  <Badge tone="ok">New</Badge>
+                                ) : (
+                                  <Badge>Read</Badge>
+                                )
+                              ) : x.kind === 'report' ? (
+                                <Badge tone={x.status === 'resolved' ? 'ok' : x.status === 'reviewing' ? 'warn' : 'neutral'}>{x.status}</Badge>
+                              ) : (
+                                <Badge>Sent</Badge>
+                              )}
+                            </div>
+                            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{x.subtitle}</div>
+                            <div className="text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{previewText(x.body)}</div>
+                          </CardBody>
+                        </Card>
+                      </button>
+                    ))}
+                  </div>
+                  {historyItems.length === 0 ? (
+                    <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                      <div className="text-sm text-[rgb(var(--nefera-muted))]">No history yet.</div>
+                    </div>
+                  ) : null}
+                </CardBody>
+              </Card>
+            ) : null}
+
+            <Card className="space-y-4">
+              <CardHeader emoji="🧾" title="Your message & report history" subtitle="Sent messages and submitted reports." />
+              <CardBody className="space-y-4">
+                <div className="grid gap-2">
+                  {messageAndReportHistory.map((x) => (
+                    <div
+                      key={x.id}
+                      className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(x.sentAt)}</div>
+                        <Badge tone={x.kind === 'report' ? 'warn' : 'neutral'}>{x.kind === 'report' ? 'Report' : 'Message'}</Badge>
+                      </div>
+                      <div className="mt-2 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">{x.text}</div>
+                      <div className="mt-2 text-xs font-semibold text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+                        • sentAt: {formatShort(x.sentAt)}
+                        {'\n'}• editedAt: {x.editedAt ? formatShort(x.editedAt) : '—'}
+                        {'\n'}• status: {x.status}
+                        {'\n'}• readAtBySchool: {x.readAtBySchool ? formatShort(x.readAtBySchool) : '—'}
+                        {x.closedAt ? `\n• closedAt: ${formatShort(x.closedAt)}` : ''}
+                        {'closureNote' in x && x.closureNote ? `\n• closure note: ${x.closureNote}` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {messageAndReportHistory.length === 0 ? (
+                  <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                    <div className="text-sm text-[rgb(var(--nefera-muted))]">No messages or reports yet.</div>
+                  </div>
+                ) : null}
+              </CardBody>
+            </Card>
           </div>
         )
       )}
+      <Modal
+        open={!!openHistoryItem}
+        onClose={() => setOpenHistoryId(null)}
+        title={openHistoryItem?.title ?? 'History item'}
+        description={openHistoryItem?.subtitle}
+        footer={
+          <Button variant="ghost" onClick={() => setOpenHistoryId(null)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">
+            {openHistoryItem?.body}
+          </div>
+          {openHistoryItem?.kind === 'report' ? (
+            <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-xs font-semibold text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+              • readAtBySchool: {openHistoryItem.readAtBySchool ? formatShort(openHistoryItem.readAtBySchool) : '—'}
+              {'\n'}• closedAt: {openHistoryItem.closedAt ? formatShort(openHistoryItem.closedAt) : '—'}
+              {'\n'}• closure note: {openHistoryItem.closureNote ? openHistoryItem.closureNote : '—'}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
     </Page>
   )
 }
@@ -3129,6 +3575,14 @@ function AdminDashboard() {
               <div className="text-sm text-[rgb(var(--nefera-muted))]">
                 Max grade: {state.schoolConfig.parent.maxGrade} • Allow beyond max: {state.schoolConfig.parent.allowBeyondMax ? 'Yes' : 'No'}
               </div>
+            </div>
+            <Divider />
+            <div className="space-y-3">
+              <Section title="Positive message" />
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">
+                {state.schoolConfig.positiveMessage.enabled ? 'Enabled' : 'Disabled'} • Max words: {state.schoolConfig.positiveMessage.maxWords}
+              </div>
+              <div className="text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{state.schoolConfig.positiveMessage.text}</div>
             </div>
             <Divider />
             <div className="space-y-3">
@@ -3291,6 +3745,37 @@ function AdminConfig() {
 
           <Divider />
           <div className="space-y-3">
+            <Section title="Positive message" subtitle="Shown to students on their dashboard." />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Select
+                label="Enabled"
+                value={draft.positiveMessage.enabled ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, positiveMessage: { ...d.positiveMessage, enabled: v === 'on' } }))}
+                options={boolOptions}
+              />
+              <Input
+                label="Max words"
+                inputMode="numeric"
+                value={String(draft.positiveMessage.maxWords)}
+                onChange={(e) => {
+                  const text = e.target.value.trim()
+                  if (!text) return
+                  const n = Number(text)
+                  if (!Number.isFinite(n)) return
+                  setDraft((d) => ({ ...d, positiveMessage: { ...d.positiveMessage, maxWords: n } }))
+                }}
+              />
+            </div>
+            <TextArea
+              label="Text"
+              value={draft.positiveMessage.text}
+              onChange={(e) => setDraft((d) => ({ ...d, positiveMessage: { ...d.positiveMessage, text: e.target.value } }))}
+              inputClassName="min-h-28"
+            />
+          </div>
+
+          <Divider />
+          <div className="space-y-3">
             <Section title="Emergency contact" />
             <div className="grid gap-3 md:grid-cols-2">
               <Input
@@ -3378,6 +3863,61 @@ function PrincipalAdminApprovals() {
                 {r.config.features.reports ? 'Enabled' : 'Disabled'} • Messaging: {r.config.features.messaging ? 'Enabled' : 'Disabled'} • Parent dashboard:{' '}
                 {r.config.features.parentDashboard ? 'Enabled' : 'Disabled'} • Parent max grade: {r.config.parent.maxGrade} • Allow beyond max:{' '}
                 {r.config.parent.allowBeyondMax ? 'Yes' : 'No'}
+              </div>
+              <Divider />
+              <div className="space-y-3">
+                <Section title="Config diff" subtitle="Current vs requested." />
+                <div className="grid gap-2">
+                  <div className="hidden grid-cols-3 gap-2 px-4 md:grid">
+                    <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Setting</div>
+                    <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Current</div>
+                    <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Requested</div>
+                  </div>
+                  {(
+                    [
+                      { label: 'Open Circle', current: state.schoolConfig.features.openCircle ? 'Enabled' : 'Disabled', next: r.config.features.openCircle ? 'Enabled' : 'Disabled' },
+                      { label: 'Reports', current: state.schoolConfig.features.reports ? 'Enabled' : 'Disabled', next: r.config.features.reports ? 'Enabled' : 'Disabled' },
+                      { label: 'Messaging', current: state.schoolConfig.features.messaging ? 'Enabled' : 'Disabled', next: r.config.features.messaging ? 'Enabled' : 'Disabled' },
+                      { label: 'Coping tools', current: state.schoolConfig.features.copingTools ? 'Enabled' : 'Disabled', next: r.config.features.copingTools ? 'Enabled' : 'Disabled' },
+                      { label: 'Parent dashboard', current: state.schoolConfig.features.parentDashboard ? 'Enabled' : 'Disabled', next: r.config.features.parentDashboard ? 'Enabled' : 'Disabled' },
+                      { label: 'Open Circle visibility', current: state.schoolConfig.openCircle.visibility, next: r.config.openCircle.visibility },
+                      { label: 'Open Circle allowed classes', current: state.schoolConfig.openCircle.allowedClassIds.join(', ') || '—', next: r.config.openCircle.allowedClassIds.join(', ') || '—' },
+                      { label: 'Open Circle allowed grades', current: state.schoolConfig.openCircle.allowedGrades.join(', ') || '—', next: r.config.openCircle.allowedGrades.join(', ') || '—' },
+                      { label: 'Open Circle allowed groups', current: state.schoolConfig.openCircle.allowedGroupIds.join(', ') || '—', next: r.config.openCircle.allowedGroupIds.join(', ') || '—' },
+                      { label: 'Parent max grade', current: String(state.schoolConfig.parent.maxGrade), next: String(r.config.parent.maxGrade) },
+                      { label: 'Allow beyond max', current: state.schoolConfig.parent.allowBeyondMax ? 'Yes' : 'No', next: r.config.parent.allowBeyondMax ? 'Yes' : 'No' },
+                      { label: 'Positive message', current: state.schoolConfig.positiveMessage.enabled ? 'Enabled' : 'Disabled', next: r.config.positiveMessage.enabled ? 'Enabled' : 'Disabled' },
+                      { label: 'Positive message max words', current: String(state.schoolConfig.positiveMessage.maxWords), next: String(r.config.positiveMessage.maxWords) },
+                      { label: 'Positive message text', current: state.schoolConfig.positiveMessage.text, next: r.config.positiveMessage.text },
+                      { label: 'Emergency title', current: state.schoolConfig.emergencyContact.title, next: r.config.emergencyContact.title },
+                      { label: 'Emergency phone', current: state.schoolConfig.emergencyContact.phone, next: r.config.emergencyContact.phone },
+                      { label: 'Emergency email', current: state.schoolConfig.emergencyContact.email, next: r.config.emergencyContact.email },
+                    ] as const
+                  ).map((row) => {
+                    const changed = row.current !== row.next
+                    return (
+                      <div
+                        key={row.label}
+                        className={`rounded-2xl border bg-white/60 p-4 ${changed ? 'border-[rgba(245,158,11,0.35)]' : 'border-white/70'}`}
+                      >
+                        <div className="grid gap-2 md:grid-cols-3 md:items-start">
+                          <div className="flex flex-wrap items-center justify-between gap-2 md:block">
+                            <div className="text-sm font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{row.label}</div>
+                            <div className="md:mt-2">{changed ? <Badge tone="warn">Changed</Badge> : <Badge tone="neutral">Same</Badge>}</div>
+                          </div>
+                          <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-3">
+                            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))] md:hidden">Current</div>
+                            <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))] whitespace-pre-wrap md:mt-1">{row.current || '—'}</div>
+                          </div>
+                          <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-3">
+                            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))] md:hidden">Requested</div>
+                            <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))] whitespace-pre-wrap md:mt-1">{row.next || '—'}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -3624,6 +4164,7 @@ function ParentProfile() {
 function CounselorDashboard() {
   const { state, dispatch } = useNefera()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const students = state.counselor.students
   const flagged = students.filter((s) => s.flags !== 'none').length
   const crisis = students.filter((s) => s.flags === 'crisis').length
@@ -3658,7 +4199,12 @@ function CounselorDashboard() {
       <div className="space-y-4">
         <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
           <Card>
-            <CardHeader emoji="🚩" title="Flags" subtitle="Students needing follow-up." />
+            <CardHeader
+              emoji="🚩"
+              title="Flags"
+              subtitle="Students needing follow-up."
+              right={<Button onClick={() => navigate('/counselor/inbox')}>Inbox 📥</Button>}
+            />
             <CardBody className="grid gap-4 md:grid-cols-2">
               <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
               <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
@@ -3678,6 +4224,9 @@ function CounselorDashboard() {
               </Link>
               <Link to="/counselor/reports">
                 <Button variant="secondary">Reports 🧾</Button>
+              </Link>
+              <Link to="/counselor/inbox">
+                <Button variant="secondary">Inbox 📥</Button>
               </Link>
               <Link to="/counselor/students">
                 <Button variant="secondary">All students 🧑‍🎓</Button>
@@ -3999,6 +4548,7 @@ function CounselorProfile() {
 function PrincipalDashboard() {
   const { state } = useNefera()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const reports = state.principal.reports
   const students = state.teacher.students
   const flagged = students.filter((s) => s.flags !== 'none').length
@@ -4029,7 +4579,12 @@ function PrincipalDashboard() {
       <div className="space-y-4">
         <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
           <Card>
-            <CardHeader emoji="📈" title="Overview" subtitle="High-level signals for the week." />
+            <CardHeader
+              emoji="📈"
+              title="Overview"
+              subtitle="High-level signals for the week."
+              right={<Button onClick={() => navigate('/principal/inbox')}>Inbox 📥</Button>}
+            />
             <CardBody className="grid gap-4 md:grid-cols-2">
               <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
               <StatPill emoji="🛡️" label="Reports" value={`${reports.length}`} />
@@ -4042,6 +4597,9 @@ function PrincipalDashboard() {
             <CardBody className="flex flex-wrap items-center gap-2">
               <Link to="/principal/reports">
                 <Button>View reports 🧾</Button>
+              </Link>
+              <Link to="/principal/inbox">
+                <Button variant="secondary">Inbox 📥</Button>
               </Link>
               <Link to="/principal/broadcast">
                 <Button variant="secondary">Broadcast 📣</Button>
@@ -4091,6 +4649,11 @@ function PrincipalDashboard() {
                 </div>
                 <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
                 <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{r.description}</div>
+                <div className="mt-2 text-xs font-semibold text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+                  • readAtBySchool: {r.readAtBySchool ? formatShort(r.readAtBySchool) : '—'}
+                  {'\n'}• closedAt: {r.closedAt ? formatShort(r.closedAt) : '—'}
+                  {'\n'}• closure note: {r.closureNote ? r.closureNote : '—'}
+                </div>
               </div>
             ))}
             {reports.length === 0 ? (
@@ -4257,6 +4820,7 @@ export function NeferaRoutes() {
         <Route path="/teacher" element={<RequireAuth role="teacher"><Navigate to="/teacher/dashboard" replace /></RequireAuth>} />
         <Route path="/teacher/dashboard" element={<RequireAuth role="teacher"><TeacherDashboard /></RequireAuth>} />
         <Route path="/teacher/broadcast" element={<RequireAuth role="teacher"><TeacherBroadcast /></RequireAuth>} />
+        <Route path="/teacher/inbox" element={<RequireAuth role="teacher"><TeacherInbox /></RequireAuth>} />
         <Route path="/teacher/students" element={<RequireAuth role="teacher"><TeacherStudents /></RequireAuth>} />
         <Route path="/teacher/students/:id" element={<RequireAuth role="teacher"><TeacherObservationChecklist /></RequireAuth>} />
         <Route path="/teacher/profile" element={<RequireAuth role="teacher"><TeacherProfile /></RequireAuth>} />
@@ -4279,6 +4843,7 @@ export function NeferaRoutes() {
         <Route path="/counselor/dashboard" element={<RequireAuth role="counselor"><CounselorDashboard /></RequireAuth>} />
         <Route path="/counselor/flags" element={<RequireAuth role="counselor"><CounselorFlags /></RequireAuth>} />
         <Route path="/counselor/reports" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorReports /></LazyBoundary></RequireAuth>} />
+        <Route path="/counselor/inbox" element={<RequireAuth role="counselor"><CounselorInbox /></RequireAuth>} />
         <Route path="/counselor/students" element={<RequireAuth role="counselor"><CounselorStudents /></RequireAuth>} />
         <Route path="/counselor/students/:id" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorStudentDetail /></LazyBoundary></RequireAuth>} />
         <Route path="/counselor/assessments/phq9" element={<RequireAuth role="counselor"><LazyBoundary><LazyCounselorAssessmentPhq9 /></LazyBoundary></RequireAuth>} />
@@ -4293,6 +4858,7 @@ export function NeferaRoutes() {
         <Route path="/principal/reports" element={<RequireAuth role="principal"><LazyBoundary><LazyPrincipalReports /></LazyBoundary></RequireAuth>} />
         <Route path="/principal/admin-approvals" element={<RequireAuth role="principal"><PrincipalAdminApprovals /></RequireAuth>} />
         <Route path="/principal/broadcast" element={<RequireAuth role="principal"><PrincipalBroadcast /></RequireAuth>} />
+        <Route path="/principal/inbox" element={<RequireAuth role="principal"><PrincipalInbox /></RequireAuth>} />
         <Route path="/principal/profile" element={<RequireAuth role="principal"><PrincipalProfile /></RequireAuth>} />
 
         <Route path="/admin" element={<RequireAuth role="admin"><Navigate to="/admin/dashboard" replace /></RequireAuth>} />

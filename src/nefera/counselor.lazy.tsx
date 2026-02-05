@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useNefera } from './state'
-import { Badge, Button, Card, CardBody, CardHeader, Modal, Page, Select, Toast, cx, flagLabel, flagTone } from './ui'
+import { makeId, useNefera } from './state'
+import { Badge, Button, Card, CardBody, CardHeader, Modal, Page, Select, TextArea, Toast, cx, flagLabel, flagTone } from './ui'
 
 function sum(nums: number[]) {
   return nums.reduce((a, b) => a + b, 0)
@@ -435,6 +435,9 @@ export function CounselorStudentDetail() {
   const navigate = useNavigate()
   const student = state.counselor.students.find((s) => s.id === params.id)
   const [toast, setToast] = useState(false)
+  const [messageOpen, setMessageOpen] = useState(false)
+  const [messageBody, setMessageBody] = useState('')
+  const [messageToast, setMessageToast] = useState(false)
 
   const [phq9, setPhq9] = useState<number[]>(student?.phq9?.answers ?? Array.from({ length: 9 }, () => 0))
   const [gad7, setGad7] = useState<number[]>(student?.gad7?.answers ?? Array.from({ length: 7 }, () => 0))
@@ -524,6 +527,9 @@ export function CounselorStudentDetail() {
                 { value: 'crisis', label: 'Crisis' },
               ]}
             />
+            <Button variant="secondary" onClick={() => setMessageOpen(true)}>
+              Message parent 💬
+            </Button>
             <Button variant="secondary" onClick={() => navigate('/counselor/flags')}>
               Back
             </Button>
@@ -627,6 +633,54 @@ export function CounselorStudentDetail() {
       </div>
 
       <Toast open={toast} message="Saved questionnaires." onClose={() => setToast(false)} />
+      <Toast open={messageToast} message="Sent to parent." onClose={() => setMessageToast(false)} />
+      <Modal
+        open={messageOpen}
+        onClose={() => {
+          setMessageOpen(false)
+          setMessageBody('')
+        }}
+        title="💬 Message parent"
+        description={`Regarding ${student.name}.`}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setMessageOpen(false)
+                setMessageBody('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={messageBody.trim().length === 0}
+              onClick={() => {
+                const createdAt = new Date().toISOString()
+                dispatch({
+                  type: 'counselor/messageParent',
+                  item: { id: makeId('msg'), createdAt, childId: student.id, body: messageBody.trim() },
+                })
+                setMessageOpen(false)
+                setMessageBody('')
+                setMessageToast(true)
+              }}
+            >
+              Send
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Message</div>
+          <TextArea
+            value={messageBody}
+            onChange={(e) => setMessageBody(e.target.value)}
+            placeholder="Share a gentle update, next steps, and how the parent can support at home."
+            rows={6}
+          />
+        </div>
+      </Modal>
     </Page>
   )
 }
@@ -635,6 +689,8 @@ export function CounselorReports() {
   const { state, dispatch } = useNefera()
   const navigate = useNavigate()
   const reports = state.counselor.reports
+  const [resolveId, setResolveId] = useState<string | null>(null)
+  const [resolveNote, setResolveNote] = useState('')
   const now = reports.reduce((max, r) => {
     const t = Date.parse(r.createdAt)
     if (Number.isNaN(t)) return max
@@ -663,6 +719,8 @@ export function CounselorReports() {
     if (p !== 0) return p
     return Date.parse(b.createdAt) - Date.parse(a.createdAt)
   })
+  const resolveReport = resolveId ? ordered.find((r) => r.id === resolveId) ?? null : null
+  const canResolve = !!resolveNote.trim()
 
   return (
     <Page emoji="🧾" title="Reports" subtitle="Safety and wellbeing reports.">
@@ -690,11 +748,26 @@ export function CounselorReports() {
               {!r.anonymous && r.context?.studentName ? (
                 <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Student: {r.context.studentName}</div>
               ) : null}
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+                • readAtBySchool: {r.readAtBySchool ? formatShort(r.readAtBySchool) : '—'}
+                {'\n'}• closedAt: {r.closedAt ? formatShort(r.closedAt) : '—'}
+                {'\n'}• closure note: {r.closureNote ? r.closureNote : '—'}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <div className="min-w-56">
                   <Select
                     value={r.status}
-                    onChange={(v) => dispatch({ type: 'reports/setStatus', reportId: r.id, status: v as 'received' | 'reviewing' | 'resolved' })}
+                    onChange={(v) => {
+                      const next = v as 'received' | 'reviewing' | 'resolved'
+                      const at = new Date().toISOString()
+                      if (next === 'resolved') {
+                        setResolveId(r.id)
+                        setResolveNote(r.closureNote ?? '')
+                        return
+                      }
+                      dispatch({ type: 'reports/setStatus', reportId: r.id, status: next })
+                      dispatch({ type: 'reports/markReadBySchool', reportId: r.id, at })
+                    }}
                     options={[
                       { value: 'received', label: 'received' },
                       { value: 'reviewing', label: 'reviewing' },
@@ -702,13 +775,31 @@ export function CounselorReports() {
                     ]}
                   />
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => dispatch({ type: 'reports/setStatus', reportId: r.id, status: r.status === 'resolved' ? 'reviewing' : 'resolved' })}
-                >
-                  {r.status === 'resolved' ? 'Re-open' : 'Mark resolved'}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!r.readAtBySchool ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => dispatch({ type: 'reports/markReadBySchool', reportId: r.id, at: new Date().toISOString() })}
+                    >
+                      Mark read
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      if (r.status === 'resolved') {
+                        dispatch({ type: 'reports/setStatus', reportId: r.id, status: 'reviewing' })
+                        return
+                      }
+                      setResolveId(r.id)
+                      setResolveNote(r.closureNote ?? '')
+                    }}
+                  >
+                    {r.status === 'resolved' ? 'Re-open' : 'Mark resolved'}
+                  </Button>
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -729,6 +820,45 @@ export function CounselorReports() {
           </Button>
         </div>
       </div>
+      <Modal
+        open={!!resolveReport}
+        onClose={() => {
+          setResolveId(null)
+          setResolveNote('')
+        }}
+        title="Resolve report"
+        description={resolveReport ? `Add a short closure note for “${resolveReport.type}”.` : undefined}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setResolveId(null)
+                setResolveNote('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!canResolve || !resolveReport}
+              onClick={() => {
+                if (!resolveReport) return
+                const at = new Date().toISOString()
+                dispatch({ type: 'reports/resolve', reportId: resolveReport.id, at, closureNote: resolveNote.trim() })
+                setResolveId(null)
+                setResolveNote('')
+              }}
+            >
+              Resolve
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Closure note</div>
+          <TextArea value={resolveNote} onChange={(e) => setResolveNote(e.target.value)} rows={5} />
+        </div>
+      </Modal>
     </Page>
   )
 }

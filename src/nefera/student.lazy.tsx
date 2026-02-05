@@ -325,6 +325,11 @@ export function StudentReports() {
                       <Badge tone={r.status === 'resolved' ? 'ok' : r.status === 'reviewing' ? 'warn' : 'neutral'}>{r.status}</Badge>
                     </div>
                     <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
+                    <div className="mt-2 text-xs font-semibold text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">
+                      • readAtBySchool: {r.readAtBySchool ? formatShort(r.readAtBySchool) : '—'}
+                      {'\n'}• closedAt: {r.closedAt ? formatShort(r.closedAt) : '—'}
+                      {'\n'}• closure note: {r.closureNote ? r.closureNote : '—'}
+                    </div>
                   </div>
                 ))}
                 {reports.length === 0 ? (

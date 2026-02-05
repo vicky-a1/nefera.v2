@@ -79,12 +79,15 @@ export type Habit = {
 export type Message = {
   id: string
   createdAt: string
+  sentAt: string
   fromRole: Role
   fromName: string
   toRole: Role
   toStudentId?: string
   subject: string
   body: string
+  editedAt?: string
+  history: { body: string; timestamp: string }[]
   readAt?: string
 }
 
@@ -105,6 +108,9 @@ export type IncidentReport = {
   description: string
   anonymous: boolean
   status: 'received' | 'reviewing' | 'resolved'
+  readAtBySchool?: string
+  closedAt?: string
+  closureNote?: string
   context?: {
     school?: string
     classId?: string
@@ -118,9 +124,21 @@ export type IncidentReport = {
 export type PeerObservation = {
   id: string
   createdAt: string
+  toStudentId?: string
+  body?: string
   anxiety: string[]
   depression: string[]
   risk: string[]
+}
+
+export type BroadcastItem = {
+  id: string
+  createdAt: string
+  title: string
+  body: string
+  sentAt: string
+  editedAt?: string
+  history: { body: string; timestamp: string }[]
 }
 
 export type TeacherObservation = {
@@ -221,20 +239,40 @@ export type NeferaState = {
   teacher: {
     classes: { id: string; name: string; studentIds: string[] }[]
     students: StudentRecord[]
-    broadcasts: { id: string; createdAt: string; title: string; body: string }[]
+    broadcasts: BroadcastItem[]
     inbox: Message[]
     observations: TeacherObservation[]
   }
 
   parent: {
     children: { id: string; name: string; grade: string }[]
-    sent: { id: string; createdAt: string; toRole: 'teacher' | 'counselor' | 'principal'; childId: string; body: string }[]
-    reports: { id: string; createdAt: string; type: string; body: string }[]
+    sent: {
+      id: string
+      createdAt: string
+      sentAt: string
+      editedAt?: string
+      history: { body: string; timestamp: string }[]
+      toRole: 'teacher' | 'counselor' | 'principal'
+      childId: string
+      body: string
+    }[]
+    inbox: Message[]
+    reports: {
+      id: string
+      createdAt: string
+      childId: string
+      type: string
+      body: string
+      status: IncidentReport['status']
+      readAtBySchool?: string
+      closedAt?: string
+      closureNote?: string
+    }[]
   }
 
   counselor: {
     students: StudentRecord[]
-    broadcasts: { id: string; createdAt: string; title: string; body: string }[]
+    broadcasts: BroadcastItem[]
     crisisActions: { id: string; createdAt: string; body: string; done: boolean }[]
     safetyEvents: SafetyEvent[]
     inbox: Message[]
@@ -246,7 +284,7 @@ export type NeferaState = {
   }
 
   principal: {
-    broadcasts: { id: string; createdAt: string; title: string; body: string }[]
+    broadcasts: BroadcastItem[]
     inbox: Message[]
     checkIns: StudentCheckIn[]
     sleepLogs: NeferaState['student']['sleepLogs']
@@ -288,6 +326,8 @@ type Action =
   | { type: 'student/toggleHabitToday'; habitId: string; isoDate: string }
   | { type: 'teacher/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
   | { type: 'teacher/sendMessage'; item: { id: string; createdAt: string; toStudentId: string; subject: string; body: string } }
+  | { type: 'teacher/messageParent'; item: { id: string; createdAt: string; childId: string; body: string } }
+  | { type: 'teacher/markMessageRead'; messageId: string }
   | { type: 'teacher/addObservation'; observation: TeacherObservation }
   | { type: 'teacher/setStudentFlags'; studentId: string; flags: StudentRecord['flags'] }
   | { type: 'counselor/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
@@ -296,11 +336,17 @@ type Action =
   | { type: 'counselor/saveCssrs'; studentId: string; answers: boolean[]; createdAt: string }
   | { type: 'counselor/addSafetyEvent'; event: SafetyEvent }
   | { type: 'counselor/toggleCrisisAction'; id: string }
+  | { type: 'counselor/messageParent'; item: { id: string; createdAt: string; childId: string; body: string } }
+  | { type: 'counselor/markMessageRead'; messageId: string }
   | { type: 'parent/sendMessage'; item: { id: string; createdAt: string; toRole: 'teacher' | 'counselor' | 'principal'; childId: string; body: string } }
+  | { type: 'parent/markMessageRead'; messageId: string }
   | { type: 'parent/addReport'; item: { id: string; createdAt: string; type: string; body: string; childId: string } }
   | { type: 'principal/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
   | { type: 'principal/addReport'; report: IncidentReport }
+  | { type: 'principal/markMessageRead'; messageId: string }
   | { type: 'reports/setStatus'; reportId: string; status: IncidentReport['status'] }
+  | { type: 'reports/markReadBySchool'; reportId: string; at: string }
+  | { type: 'reports/resolve'; reportId: string; at: string; closureNote: string }
 
 const STORAGE_KEY = 'nefera.v1'
 
@@ -320,15 +366,128 @@ function loadState(): NeferaState | undefined {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as NeferaState
-    if (!('schoolConfig' in parsed)) {
-      ;(parsed as NeferaState).schoolConfig = defaultSchoolConfig()
+
+    const normalizeMessageArray = (arr: unknown) => {
+      if (!Array.isArray(arr)) return []
+      return arr.map((m) => {
+        const obj = m && typeof m === 'object' ? (m as Record<string, unknown>) : {}
+        const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString()
+        const sentAt = typeof obj.sentAt === 'string' ? obj.sentAt : createdAt
+        const historyRaw = obj.history
+        const history = Array.isArray(historyRaw)
+          ? historyRaw
+              .map((h) => (h && typeof h === 'object' ? (h as Record<string, unknown>) : {}))
+              .filter((h) => typeof h.body === 'string' && typeof h.timestamp === 'string')
+              .map((h) => ({ body: String(h.body), timestamp: String(h.timestamp) }))
+          : [{ body: typeof obj.body === 'string' ? obj.body : '', timestamp: sentAt }]
+        return { ...obj, createdAt, sentAt, history } as Message
+      })
     }
-    if (!('schoolConfigRequests' in parsed)) {
-      ;(parsed as NeferaState).schoolConfigRequests = []
+
+    const normalizeBroadcastArray = (arr: unknown) => {
+      if (!Array.isArray(arr)) return []
+      return arr.map((b) => {
+        const obj = b && typeof b === 'object' ? (b as Record<string, unknown>) : {}
+        const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString()
+        const sentAt = typeof obj.sentAt === 'string' ? obj.sentAt : createdAt
+        const body = typeof obj.body === 'string' ? obj.body : ''
+        const historyRaw = obj.history
+        const history = Array.isArray(historyRaw)
+          ? historyRaw
+              .map((h) => (h && typeof h === 'object' ? (h as Record<string, unknown>) : {}))
+              .filter((h) => typeof h.body === 'string' && typeof h.timestamp === 'string')
+              .map((h) => ({ body: String(h.body), timestamp: String(h.timestamp) }))
+          : [{ body, timestamp: sentAt }]
+        return {
+          id: typeof obj.id === 'string' ? obj.id : uid('broadcast'),
+          createdAt,
+          title: typeof obj.title === 'string' ? obj.title : 'Broadcast',
+          body,
+          sentAt,
+          editedAt: typeof obj.editedAt === 'string' ? obj.editedAt : undefined,
+          history,
+        } as BroadcastItem
+      })
     }
+
+    const defaults = defaultSchoolConfig()
+    const normalizeSchoolConfig = (cfg: unknown): SchoolConfig => {
+      const obj = cfg && typeof cfg === 'object' ? (cfg as Record<string, unknown>) : {}
+      const openCircle = (obj.openCircle && typeof obj.openCircle === 'object' ? (obj.openCircle as Record<string, unknown>) : {}) as Record<string, unknown>
+      const parent = (obj.parent && typeof obj.parent === 'object' ? (obj.parent as Record<string, unknown>) : {}) as Record<string, unknown>
+      const positiveMessage =
+        (obj.positiveMessage && typeof obj.positiveMessage === 'object'
+          ? (obj.positiveMessage as Record<string, unknown>)
+          : {}) as Record<string, unknown>
+      const features = (obj.features && typeof obj.features === 'object' ? (obj.features as Record<string, unknown>) : {}) as Record<string, unknown>
+      const emergencyContact =
+        (obj.emergencyContact && typeof obj.emergencyContact === 'object'
+          ? (obj.emergencyContact as Record<string, unknown>)
+          : {}) as Record<string, unknown>
+
+      return {
+        openCircle: {
+          visibility:
+            openCircle.visibility === 'off' || openCircle.visibility === 'school' || openCircle.visibility === 'class' || openCircle.visibility === 'grade' || openCircle.visibility === 'groups'
+              ? openCircle.visibility
+              : defaults.openCircle.visibility,
+          allowedClassIds: Array.isArray(openCircle.allowedClassIds) ? openCircle.allowedClassIds.map((x) => String(x)).filter(Boolean) : defaults.openCircle.allowedClassIds,
+          allowedGrades: Array.isArray(openCircle.allowedGrades) ? openCircle.allowedGrades.map((x) => String(x)).filter(Boolean) : defaults.openCircle.allowedGrades,
+          allowedGroupIds: Array.isArray(openCircle.allowedGroupIds) ? openCircle.allowedGroupIds.map((x) => String(x)).filter(Boolean) : defaults.openCircle.allowedGroupIds,
+        },
+        parent: {
+          maxGrade: typeof parent.maxGrade === 'number' && Number.isFinite(parent.maxGrade) ? parent.maxGrade : defaults.parent.maxGrade,
+          allowBeyondMax: typeof parent.allowBeyondMax === 'boolean' ? parent.allowBeyondMax : defaults.parent.allowBeyondMax,
+        },
+        positiveMessage: {
+          enabled: typeof positiveMessage.enabled === 'boolean' ? positiveMessage.enabled : defaults.positiveMessage.enabled,
+          maxWords: typeof positiveMessage.maxWords === 'number' && Number.isFinite(positiveMessage.maxWords) ? positiveMessage.maxWords : defaults.positiveMessage.maxWords,
+          text: typeof positiveMessage.text === 'string' ? positiveMessage.text : defaults.positiveMessage.text,
+        },
+        features: {
+          openCircle: typeof features.openCircle === 'boolean' ? features.openCircle : defaults.features.openCircle,
+          reports: typeof features.reports === 'boolean' ? features.reports : defaults.features.reports,
+          messaging: typeof features.messaging === 'boolean' ? features.messaging : defaults.features.messaging,
+          copingTools: typeof features.copingTools === 'boolean' ? features.copingTools : defaults.features.copingTools,
+          parentDashboard: typeof features.parentDashboard === 'boolean' ? features.parentDashboard : defaults.features.parentDashboard,
+        },
+        emergencyContact: {
+          title: typeof emergencyContact.title === 'string' ? emergencyContact.title : defaults.emergencyContact.title,
+          phone: typeof emergencyContact.phone === 'string' ? emergencyContact.phone : defaults.emergencyContact.phone,
+          email: typeof emergencyContact.email === 'string' ? emergencyContact.email : defaults.emergencyContact.email,
+        },
+      }
+    }
+
+    ;(parsed as NeferaState).schoolConfig = normalizeSchoolConfig((parsed as NeferaState).schoolConfig)
+
+    const reqsRaw = (parsed as { schoolConfigRequests?: unknown }).schoolConfigRequests
+    ;(parsed as NeferaState).schoolConfigRequests = Array.isArray(reqsRaw)
+      ? reqsRaw.map((r) => {
+          const obj = r && typeof r === 'object' ? (r as Record<string, unknown>) : {}
+          const status = obj.status === 'pending' || obj.status === 'approved' || obj.status === 'rejected' ? obj.status : 'pending'
+          const requestedByRaw = obj.requestedBy && typeof obj.requestedBy === 'object' ? (obj.requestedBy as Record<string, unknown>) : {}
+          const roleRaw = requestedByRaw.role
+          const role: Role =
+            roleRaw === 'student' || roleRaw === 'teacher' || roleRaw === 'parent' || roleRaw === 'counselor' || roleRaw === 'principal' || roleRaw === 'admin'
+              ? roleRaw
+              : 'admin'
+          return {
+            id: typeof obj.id === 'string' ? obj.id : uid('cfg_req'),
+            createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString(),
+            requestedBy: { role, name: typeof requestedByRaw.name === 'string' ? requestedByRaw.name : 'Admin' },
+            config: normalizeSchoolConfig(obj.config),
+            status,
+          } as SchoolConfigRequest
+        })
+      : []
+
     const student = parsed.student
     if (student && !('peerObservations' in student)) {
       ;(parsed.student as NeferaState['student']).peerObservations = []
+    }
+    if (student && 'inbox' in student) {
+      ;(parsed.student as NeferaState['student']).inbox = normalizeMessageArray((student as { inbox?: unknown }).inbox)
     }
     const counselor = parsed.counselor
     if (counselor && !('safetyEvents' in counselor)) {
@@ -352,6 +511,12 @@ function loadState(): NeferaState | undefined {
     if (counselor && !('inbox' in counselor)) {
       ;(parsed.counselor as NeferaState['counselor']).inbox = []
     }
+    if (counselor && 'inbox' in counselor) {
+      ;(parsed.counselor as NeferaState['counselor']).inbox = normalizeMessageArray((counselor as { inbox?: unknown }).inbox)
+    }
+    if (counselor && 'broadcasts' in counselor) {
+      ;(parsed.counselor as NeferaState['counselor']).broadcasts = normalizeBroadcastArray((counselor as { broadcasts?: unknown }).broadcasts)
+    }
     const principal = parsed.principal
     if (principal && !('checkIns' in principal)) {
       ;(parsed.principal as NeferaState['principal']).checkIns = []
@@ -362,12 +527,24 @@ function loadState(): NeferaState | undefined {
     if (principal && !('inbox' in principal)) {
       ;(parsed.principal as NeferaState['principal']).inbox = []
     }
+    if (principal && 'inbox' in principal) {
+      ;(parsed.principal as NeferaState['principal']).inbox = normalizeMessageArray((principal as { inbox?: unknown }).inbox)
+    }
+    if (principal && 'broadcasts' in principal) {
+      ;(parsed.principal as NeferaState['principal']).broadcasts = normalizeBroadcastArray((principal as { broadcasts?: unknown }).broadcasts)
+    }
     const teacher = parsed.teacher
     if (teacher && !('observations' in teacher)) {
       ;(parsed.teacher as NeferaState['teacher']).observations = []
     }
     if (teacher && !('inbox' in teacher)) {
       ;(parsed.teacher as NeferaState['teacher']).inbox = []
+    }
+    if (teacher && 'inbox' in teacher) {
+      ;(parsed.teacher as NeferaState['teacher']).inbox = normalizeMessageArray((teacher as { inbox?: unknown }).inbox)
+    }
+    if (teacher && 'broadcasts' in teacher) {
+      ;(parsed.teacher as NeferaState['teacher']).broadcasts = normalizeBroadcastArray((teacher as { broadcasts?: unknown }).broadcasts)
     }
     const parent = parsed.parent
     const parentSent =
@@ -379,12 +556,50 @@ function loadState(): NeferaState | undefined {
         const normalizedToRole = toRole === 'teacher' || toRole === 'counselor' || toRole === 'principal' ? toRole : 'counselor'
         const childId =
           typeof obj.childId === 'string' ? obj.childId : typeof obj.toChildId === 'string' ? obj.toChildId : 'stu_1'
+        const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString()
+        const sentAt = typeof obj.sentAt === 'string' ? obj.sentAt : createdAt
+        const historyRaw = obj.history
+        const history = Array.isArray(historyRaw)
+          ? historyRaw
+              .map((h) => (h && typeof h === 'object' ? (h as Record<string, unknown>) : {}))
+              .filter((h) => typeof h.body === 'string' && typeof h.timestamp === 'string')
+              .map((h) => ({ body: String(h.body), timestamp: String(h.timestamp) }))
+          : [{ body: typeof obj.body === 'string' ? obj.body : '', timestamp: sentAt }]
         return {
           id: typeof obj.id === 'string' ? obj.id : uid('p_msg'),
-          createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString(),
+          createdAt,
+          sentAt,
+          editedAt: typeof obj.editedAt === 'string' ? obj.editedAt : undefined,
+          history,
           toRole: normalizedToRole,
           childId,
           body: typeof obj.body === 'string' ? obj.body : '',
+        }
+      })
+    }
+    if (parent && !('inbox' in parent)) {
+      ;(parsed.parent as NeferaState['parent']).inbox = []
+    }
+    if (parent && 'inbox' in parent) {
+      ;(parsed.parent as NeferaState['parent']).inbox = normalizeMessageArray((parent as { inbox?: unknown }).inbox)
+    }
+    const parentReports =
+      parent && typeof parent === 'object' && 'reports' in parent ? (parent as { reports?: unknown }).reports : undefined
+    if (Array.isArray(parentReports)) {
+      ;(parsed.parent as NeferaState['parent']).reports = parentReports.map((r) => {
+        const obj = r && typeof r === 'object' ? (r as Record<string, unknown>) : {}
+        const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString()
+        const status = obj.status === 'received' || obj.status === 'reviewing' || obj.status === 'resolved' ? obj.status : 'received'
+        return {
+          id: typeof obj.id === 'string' ? obj.id : uid('p_rep'),
+          createdAt,
+          childId: typeof obj.childId === 'string' ? obj.childId : 'stu_1',
+          type: typeof obj.type === 'string' ? obj.type : 'Report',
+          body: typeof obj.body === 'string' ? obj.body : '',
+          status,
+          readAtBySchool: typeof obj.readAtBySchool === 'string' ? obj.readAtBySchool : undefined,
+          closedAt: typeof obj.closedAt === 'string' ? obj.closedAt : undefined,
+          closureNote: typeof obj.closureNote === 'string' ? obj.closureNote : undefined,
         }
       })
     }
@@ -456,26 +671,33 @@ function initialState(): NeferaState {
     { id: 'stu_4', name: 'Noah R.', grade: 'Grade 11', flags: 'crisis', latestFeeling: 'sad', notes: [] },
   ]
 
+  const msg1At = new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString()
+  const msg2At = new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString()
+
   const inbox: Message[] = [
     {
       id: 'msg_1',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+      createdAt: msg1At,
+      sentAt: msg1At,
       fromRole: 'teacher',
       fromName: 'Ms. Clara',
       toRole: 'student',
       toStudentId: 'stu_1',
       subject: 'Proud of your effort',
       body: 'I noticed you stayed focused today. If anything feels heavy, you can always talk to me after class.',
+      history: [{ body: 'I noticed you stayed focused today. If anything feels heavy, you can always talk to me after class.', timestamp: msg1At }],
     },
     {
       id: 'msg_2',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
+      createdAt: msg2At,
+      sentAt: msg2At,
       fromRole: 'counselor',
       fromName: 'Counselor Imani',
       toRole: 'student',
       toStudentId: 'stu_1',
       subject: 'Check-in reminder',
       body: 'A gentle reminder: daily check-ins help you spot patterns. One minute is enough.',
+      history: [{ body: 'A gentle reminder: daily check-ins help you spot patterns. One minute is enough.', timestamp: msg2At }],
     },
   ]
 
@@ -554,6 +776,7 @@ function initialState(): NeferaState {
     parent: {
       children: [{ id: 'stu_1', name: 'Amina K.', grade: 'Grade 8' }],
       sent: [],
+      inbox: [],
       reports: [],
     },
     counselor: {
@@ -580,6 +803,18 @@ function initialState(): NeferaState {
       reports: seededIncidents,
     },
   }
+}
+
+function buildMessage(input: Omit<Message, 'sentAt' | 'history'> & { sentAt?: string; history?: Message['history'] }): Message {
+  const sentAt = input.sentAt ?? input.createdAt
+  const history = input.history ?? [{ body: input.body, timestamp: sentAt }]
+  return { ...input, sentAt, history }
+}
+
+function buildBroadcastItem(input: Omit<BroadcastItem, 'sentAt' | 'history'> & { sentAt?: string; history?: BroadcastItem['history'] }): BroadcastItem {
+  const sentAt = input.sentAt ?? input.createdAt
+  const history = input.history ?? [{ body: input.body, timestamp: sentAt }]
+  return { ...input, sentAt, history }
 }
 
 function reducer(state: NeferaState, action: Action): NeferaState {
@@ -707,8 +942,9 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       return { ...state, student: { ...state.student, habits } }
     }
     case 'teacher/addBroadcast': {
-      const broadcasts = [action.item, ...state.teacher.broadcasts].slice(0, 100)
-      const inboxItem: Message = {
+      const broadcast = buildBroadcastItem(action.item)
+      const broadcasts = [broadcast, ...state.teacher.broadcasts].slice(0, 100)
+      const inboxItem = buildMessage({
         id: uid('msg'),
         createdAt: action.item.createdAt,
         fromRole: 'teacher',
@@ -717,11 +953,11 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         toStudentId: undefined,
         subject: action.item.title,
         body: action.item.body,
-      }
+      })
       return { ...state, teacher: { ...state.teacher, broadcasts }, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
     }
     case 'teacher/sendMessage': {
-      const inboxItem: Message = {
+      const inboxItem = buildMessage({
         id: action.item.id,
         createdAt: action.item.createdAt,
         fromRole: 'teacher',
@@ -730,8 +966,26 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         toStudentId: action.item.toStudentId,
         subject: action.item.subject,
         body: action.item.body,
-      }
+      })
       return { ...state, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
+    }
+    case 'teacher/messageParent': {
+      const inboxItem = buildMessage({
+        id: action.item.id,
+        createdAt: action.item.createdAt,
+        fromRole: 'teacher',
+        fromName: state.user?.name ?? 'Teacher',
+        toRole: 'parent',
+        toStudentId: action.item.childId,
+        subject: 'Message from teacher',
+        body: action.item.body,
+      })
+      return { ...state, parent: { ...state.parent, inbox: [inboxItem, ...state.parent.inbox].slice(0, 250) } }
+    }
+    case 'teacher/markMessageRead': {
+      const now = new Date().toISOString()
+      const inbox = state.teacher.inbox.map((m) => (m.id === action.messageId ? { ...m, readAt: m.readAt ?? now } : m))
+      return { ...state, teacher: { ...state.teacher, inbox } }
     }
     case 'teacher/addObservation': {
       const observations = [action.observation, ...state.teacher.observations].slice(0, 300)
@@ -748,8 +1002,9 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       return { ...state, teacher: { ...state.teacher, students }, counselor: { ...state.counselor, students: counselorStudents } }
     }
     case 'counselor/addBroadcast': {
-      const broadcasts = [action.item, ...state.counselor.broadcasts].slice(0, 100)
-      const inboxItem: Message = {
+      const broadcast = buildBroadcastItem(action.item)
+      const broadcasts = [broadcast, ...state.counselor.broadcasts].slice(0, 100)
+      const inboxItem = buildMessage({
         id: uid('msg'),
         createdAt: action.item.createdAt,
         fromRole: 'counselor',
@@ -758,7 +1013,7 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         toStudentId: undefined,
         subject: action.item.title,
         body: action.item.body,
-      }
+      })
       return { ...state, counselor: { ...state.counselor, broadcasts }, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
     }
     case 'counselor/savePhq9': {
@@ -781,10 +1036,32 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       const crisisActions = state.counselor.crisisActions.map((a) => (a.id === action.id ? { ...a, done: !a.done } : a))
       return { ...state, counselor: { ...state.counselor, crisisActions } }
     }
+    case 'counselor/messageParent': {
+      const inboxItem = buildMessage({
+        id: action.item.id,
+        createdAt: action.item.createdAt,
+        fromRole: 'counselor',
+        fromName: state.user?.name ?? 'Counselor',
+        toRole: 'parent',
+        toStudentId: action.item.childId,
+        subject: 'Message from counselor',
+        body: action.item.body,
+      })
+      return { ...state, parent: { ...state.parent, inbox: [inboxItem, ...state.parent.inbox].slice(0, 250) } }
+    }
+    case 'counselor/markMessageRead': {
+      const now = new Date().toISOString()
+      const inbox = state.counselor.inbox.map((m) => (m.id === action.messageId ? { ...m, readAt: m.readAt ?? now } : m))
+      return { ...state, counselor: { ...state.counselor, inbox } }
+    }
     case 'parent/sendMessage': {
-      const sent = [action.item, ...state.parent.sent].slice(0, 200)
-      const inboxItem: Message = {
-        id: uid('msg'),
+      const sentAt = action.item.createdAt
+      const sent = [
+        { ...action.item, sentAt, editedAt: undefined, history: [{ body: action.item.body, timestamp: sentAt }] },
+        ...state.parent.sent,
+      ].slice(0, 200)
+      const inboxItem = buildMessage({
+        id: action.item.id,
         createdAt: action.item.createdAt,
         fromRole: 'parent',
         fromName: state.user?.name ?? 'Parent',
@@ -792,7 +1069,7 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         toStudentId: action.item.childId,
         subject: 'Message from parent',
         body: action.item.body,
-      }
+      })
       const addInbox = (inbox: Message[]) => [inboxItem, ...inbox].slice(0, 250)
       if (action.item.toRole === 'teacher') {
         return { ...state, parent: { ...state.parent, sent }, teacher: { ...state.teacher, inbox: addInbox(state.teacher.inbox) } }
@@ -802,8 +1079,16 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       }
       return { ...state, parent: { ...state.parent, sent }, counselor: { ...state.counselor, inbox: addInbox(state.counselor.inbox) } }
     }
+    case 'parent/markMessageRead': {
+      const now = new Date().toISOString()
+      const inbox = state.parent.inbox.map((m) => (m.id === action.messageId ? { ...m, readAt: m.readAt ?? now } : m))
+      return { ...state, parent: { ...state.parent, inbox } }
+    }
     case 'parent/addReport': {
-      const reports = [action.item, ...state.parent.reports].slice(0, 200)
+      const reports = [
+        { id: action.item.id, createdAt: action.item.createdAt, childId: action.item.childId, type: action.item.type, body: action.item.body, status: 'received' as const },
+        ...state.parent.reports,
+      ].slice(0, 200)
       const principalReports: IncidentReport = {
         id: action.item.id,
         createdAt: action.item.createdAt,
@@ -828,8 +1113,24 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       }
     }
     case 'principal/addBroadcast': {
-      const broadcasts = [action.item, ...state.principal.broadcasts].slice(0, 200)
-      return { ...state, principal: { ...state.principal, broadcasts } }
+      const broadcast = buildBroadcastItem(action.item)
+      const broadcasts = [broadcast, ...state.principal.broadcasts].slice(0, 200)
+      const inboxItem = buildMessage({
+        id: uid('msg'),
+        createdAt: action.item.createdAt,
+        fromRole: 'principal',
+        fromName: state.user?.name ?? 'Principal',
+        toRole: 'student',
+        toStudentId: undefined,
+        subject: action.item.title,
+        body: action.item.body,
+      })
+      return { ...state, principal: { ...state.principal, broadcasts }, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
+    }
+    case 'principal/markMessageRead': {
+      const now = new Date().toISOString()
+      const inbox = state.principal.inbox.map((m) => (m.id === action.messageId ? { ...m, readAt: m.readAt ?? now } : m))
+      return { ...state, principal: { ...state.principal, inbox } }
     }
     case 'principal/addReport':
       return {
@@ -839,11 +1140,42 @@ function reducer(state: NeferaState, action: Action): NeferaState {
       }
     case 'reports/setStatus': {
       const update = (r: IncidentReport) => (r.id === action.reportId ? { ...r, status: action.status } : r)
+      const updateParent = (r: NeferaState['parent']['reports'][number]) => (r.id === action.reportId ? { ...r, status: action.status } : r)
       return {
         ...state,
         student: { ...state.student, incidents: state.student.incidents.map(update) },
         principal: { ...state.principal, reports: state.principal.reports.map(update) },
         counselor: { ...state.counselor, reports: state.counselor.reports.map(update) },
+        parent: { ...state.parent, reports: state.parent.reports.map(updateParent) },
+      }
+    }
+    case 'reports/markReadBySchool': {
+      const update = (r: IncidentReport) => (r.id === action.reportId ? { ...r, readAtBySchool: r.readAtBySchool ?? action.at } : r)
+      const updateParent = (r: NeferaState['parent']['reports'][number]) =>
+        r.id === action.reportId ? { ...r, readAtBySchool: r.readAtBySchool ?? action.at } : r
+      return {
+        ...state,
+        student: { ...state.student, incidents: state.student.incidents.map(update) },
+        principal: { ...state.principal, reports: state.principal.reports.map(update) },
+        counselor: { ...state.counselor, reports: state.counselor.reports.map(update) },
+        parent: { ...state.parent, reports: state.parent.reports.map(updateParent) },
+      }
+    }
+    case 'reports/resolve': {
+      const update = (r: IncidentReport) =>
+        r.id === action.reportId
+          ? { ...r, status: 'resolved', readAtBySchool: r.readAtBySchool ?? action.at, closedAt: action.at, closureNote: action.closureNote }
+          : r
+      const updateParent = (r: NeferaState['parent']['reports'][number]) =>
+        r.id === action.reportId
+          ? { ...r, status: 'resolved', readAtBySchool: r.readAtBySchool ?? action.at, closedAt: action.at, closureNote: action.closureNote }
+          : r
+      return {
+        ...state,
+        student: { ...state.student, incidents: state.student.incidents.map(update) },
+        principal: { ...state.principal, reports: state.principal.reports.map(update) },
+        counselor: { ...state.counselor, reports: state.counselor.reports.map(update) },
+        parent: { ...state.parent, reports: state.parent.reports.map(updateParent) },
       }
     }
   }
