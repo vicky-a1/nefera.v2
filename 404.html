@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nefera</title>
+  </head>
+  <body>
+    <script type="text/javascript">
+      ;(function (l) {
+        var pathSegmentsToKeep = 1
+        var repoBase = l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/')
+        l.replace(
+          l.protocol +
+            '//' +
+            l.host +
+            repoBase +
+            '/?/' +
+            l.pathname
+              .split('/')
+              .slice(1 + pathSegmentsToKeep)
+              .join('/')
+              .replace(/&/g, '~and~') +
+            (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+            l.hash,
+        )
+      })(window.location)
+    </script>
+  </body>
+</html>
