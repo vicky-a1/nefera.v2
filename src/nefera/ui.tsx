@@ -461,31 +461,44 @@ export function FeelingButton({
   className?: string
 }) {
   const base = cx(
-    'grid place-items-center rounded-full border shadow-lg shadow-black/5 transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-70',
-    selected ? 'animate-[nefera-pop_240ms_ease-out]' : '',
+    'group relative grid min-h-11 min-w-11 place-items-center rounded-full border shadow-lg shadow-black/5 transition-transform duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:scale-[1.05] hover:shadow-xl hover:shadow-black/10 active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(98,110,255,0.25)] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-70 motion-reduce:transition-none motion-reduce:hover:transform-none motion-reduce:active:transform-none',
+    selected ? 'border-2 outline outline-2 outline-white/80 outline-offset-2 shadow-xl shadow-black/10' : '',
     className,
   )
 
-  const style = { color, background, borderColor, boxShadow: selected ? `0 0 0 6px ${ringColor}` : undefined } as const
+  const style = {
+    color,
+    background,
+    borderColor,
+    boxShadow: selected
+      ? `0 0 0 2px rgba(255,255,255,0.92), 0 0 0 10px ${ringColor}, 0 14px 26px rgba(0,0,0,0.12)`
+      : undefined,
+  } as const
 
   if (to) {
     if (disabled) {
       return (
         <div aria-label={label} title={label} className={cx(base, 'pointer-events-none')} style={style}>
-          <div className="text-3xl leading-none">{emoji}</div>
+          <div className="text-[2.2rem] leading-none transition-transform duration-200 ease-out group-hover:scale-[1.08] group-hover:animate-[nefera-pop_240ms_ease-out] group-active:scale-[0.94] group-active:animate-[nefera-pop_200ms_ease-out] motion-reduce:transform-none motion-reduce:animate-none">
+            {emoji}
+          </div>
         </div>
       )
     }
     return (
       <Link to={to} aria-label={label} title={label} className={base} style={style}>
-        <div className="text-3xl leading-none">{emoji}</div>
+        <div className="text-[2.2rem] leading-none transition-transform duration-200 ease-out group-hover:scale-[1.08] group-hover:animate-[nefera-pop_240ms_ease-out] group-active:scale-[0.94] group-active:animate-[nefera-pop_200ms_ease-out] motion-reduce:transform-none motion-reduce:animate-none">
+          {emoji}
+        </div>
       </Link>
     )
   }
 
   return (
     <button type="button" disabled={disabled} aria-label={label} title={label} onClick={onClick} className={base} style={style}>
-      <div className="text-3xl leading-none">{emoji}</div>
+      <div className="text-[2.2rem] leading-none transition-transform duration-200 ease-out group-hover:scale-[1.08] group-hover:animate-[nefera-pop_240ms_ease-out] group-active:scale-[0.94] group-active:animate-[nefera-pop_200ms_ease-out] motion-reduce:transform-none motion-reduce:animate-none">
+        {emoji}
+      </div>
     </button>
   )
 }

@@ -8,7 +8,7 @@ import { NeferaProvider } from './nefera/state'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NeferaProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <NeferaRoutes />
       </BrowserRouter>
     </NeferaProvider>

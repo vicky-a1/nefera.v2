@@ -38,7 +38,6 @@ import {
   ProgressBar,
   Section,
   Select,
-  Segmented,
   StatPill,
   StepperHeader,
   Stars,
@@ -69,6 +68,7 @@ const roles: Array<{ role: Role; label: string; emoji: string; blurb: string }> 
   { role: 'parent', label: 'Parent', emoji: '👪', blurb: 'Child wellbeing overview and gentle check-ins.' },
   { role: 'counselor', label: 'Counselor', emoji: '🧠', blurb: 'Flagged students, questionnaires, and crisis actions.' },
   { role: 'principal', label: 'Principal', emoji: '🏫', blurb: 'School-wide insights and reports.' },
+  { role: 'admin', label: 'Admin', emoji: '🛠️', blurb: 'School settings and configuration requests.' },
 ]
 
 type NavItem = { to: string; label: string; emoji: string }
@@ -110,7 +110,14 @@ function navForRole(role: Role): NavItem[] {
         { to: '/principal/dashboard', label: 'Home', emoji: '🏡' },
         { to: '/principal/reports', label: 'Reports', emoji: '🧾' },
         { to: '/principal/broadcast', label: 'Broadcast', emoji: '📣' },
+        { to: '/principal/admin-approvals', label: 'Approvals', emoji: '✅' },
         { to: '/principal/profile', label: 'Profile', emoji: '🙋' },
+      ]
+    case 'admin':
+      return [
+        { to: '/admin/dashboard', label: 'Home', emoji: '🏡' },
+        { to: '/admin/config', label: 'Config', emoji: '⚙️' },
+        { to: '/admin/profile', label: 'Profile', emoji: '🙋' },
       ]
   }
 }
@@ -496,6 +503,23 @@ function StudentDashboard() {
   const feelingHint = useFirstVisitHint('nefera_hint_feeling_checkin_v1')
   const dayStreak = streakFromISODateList(state.student.checkIns.map((c) => c.createdAt.slice(0, 10)))
   const journalStreak = streakFromISODateList(state.student.journal.map((j) => j.dateKey))
+  const studentId = state.parent.children[0]?.id ?? state.teacher.students[0]?.id ?? 'stu_1'
+  const studentGrade = state.teacher.students.find((s) => s.id === studentId)?.grade ?? ''
+  const studentClassId = state.teacher.classes.find((c) => c.studentIds.includes(studentId))?.id ?? ''
+  const openCircleVisibility = state.schoolConfig.openCircle.visibility
+  const canAccessOpenCircle =
+    state.schoolConfig.features.openCircle &&
+    openCircleVisibility !== 'off' &&
+    (openCircleVisibility === 'school'
+      ? true
+      : openCircleVisibility === 'class'
+        ? state.schoolConfig.openCircle.allowedClassIds.length === 0 || state.schoolConfig.openCircle.allowedClassIds.includes(studentClassId)
+      : openCircleVisibility === 'grade'
+        ? state.schoolConfig.openCircle.allowedGrades.length === 0 || state.schoolConfig.openCircle.allowedGrades.includes(studentGrade)
+        : openCircleVisibility === 'groups'
+          ? state.schoolConfig.openCircle.allowedGroupIds.length === 0 ||
+            state.student.groups.some((g) => g.joined && state.schoolConfig.openCircle.allowedGroupIds.includes(g.id))
+          : true)
   const last7 = useMemo(() => {
     const base = new Date(getTodayISO())
     const days: string[] = []
@@ -576,8 +600,30 @@ function StudentDashboard() {
     state.student.sleepLogs.forEach((x) => days.add(x.createdAt.slice(0, 10)))
     return days.size
   }, [state.student.checkIns, state.student.journal, state.student.sleepLogs])
+  const positiveMessageWords = useMemo(() => {
+    const text = state.schoolConfig.positiveMessage.text.trim()
+    return text ? text.split(/\s+/).filter(Boolean) : []
+  }, [state.schoolConfig.positiveMessage.text])
+  const positiveMessageText = useMemo(() => {
+    const max = Math.max(1, state.schoolConfig.positiveMessage.maxWords)
+    return positiveMessageWords.slice(0, max).join(' ')
+  }, [positiveMessageWords, state.schoolConfig.positiveMessage.maxWords])
+
   return (
-    <Page title={`Hi ${user?.name ?? 'there'}`} subtitle="Start with a one-minute check-in.">
+    <Page
+      title={`Hi ${user?.name ?? 'there'}`}
+      subtitle="Start with a one-minute check-in."
+      right={
+        user?.role === 'student' && state.schoolConfig.positiveMessage.enabled && positiveMessageText ? (
+          <div className="w-80">
+            <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-lg shadow-black/5">
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Message from school</div>
+              <div className="mt-1 text-sm font-extrabold text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">{positiveMessageText}</div>
+            </div>
+          </div>
+        ) : null
+      }
+    >
       <Card className="mb-4">
         <CardBody className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
@@ -647,11 +693,11 @@ function StudentDashboard() {
             <div className="grid grid-cols-1 gap-3">
               {[
                 { to: '/student/journal/write', title: 'Journal', icon: '📝', desc: 'Write it out, softly.' },
-                { to: '/student/reports', title: 'Reports', icon: '📊', desc: 'Patterns over time.' },
+                ...(state.schoolConfig.features.reports ? [{ to: '/student/reports', title: 'Reports', icon: '📊', desc: 'Patterns over time.' }] : []),
                 { to: '/student/habits', title: 'Habits', icon: '🔥', desc: 'Tiny routines, big wins.' },
                 { to: '/student/soul-space', title: 'Soul Space', icon: '🌿', desc: 'Calm tools on demand.' },
-                { to: '/student/open-circle', title: 'Open Circle', icon: '🌍', desc: 'A kind community feed.' },
-                { to: '/student/report-incident', title: 'Report', icon: '🛡️', desc: 'Speak up safely.' },
+                ...(canAccessOpenCircle ? [{ to: '/student/open-circle', title: 'Open Circle', icon: '🌍', desc: 'A kind community feed.' }] : []),
+                ...(state.schoolConfig.features.reports ? [{ to: '/student/report-incident', title: 'Report', icon: '🛡️', desc: 'Speak up safely.' }] : []),
               ].map((x) => (
                 <TileCard key={x.to} to={x.to} icon={x.icon} title={x.title} description={x.desc} />
               ))}
@@ -707,7 +753,6 @@ function StudentCheckInFlow() {
   const feeling = (params.feeling as Feeling | undefined) ?? 'neutral'
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState<StudentCheckInAnswers>({})
-  const [journalPrompt, setJournalPrompt] = useState(false)
 
   const ageGroup: AgeGroup = state.student.ageGroup ?? '11-17'
   const studentId = state.parent.children[0]?.id ?? state.teacher.students[0]?.id ?? 'stu_1'
@@ -721,141 +766,141 @@ function StudentCheckInFlow() {
     const byFeeling = {
       happy: {
         '6-10': {
-          pageSubtitle: "🎉 SUPER FUN DAY! What made you smile today?",
+          pageSubtitle: 'What made you smile today?',
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "🎉 SUPER FUN DAY! What made you smile today?",
-              subtitle: 'Tap to select',
+              title: 'What made you smile today?',
+              subtitle: 'Tap all that fit',
               items: [
                 'Did great in school',
                 'Played with friends',
                 'Felt happy inside',
-                'Slept good/good energy',
+                'Slept well / had energy',
                 'Finished something hard',
-                'Just happy for no reason',
-                'Did fun game or drawing',
-                'Helped mom/dad/friend',
+                'Felt happy for no big reason',
+                'Did a fun game or drawing',
+                'Helped a parent or friend',
                 'Other',
               ],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'stars', key: 'happyStars', title: 'How big was your happy?', max: 5 },
-            { kind: 'single', key: 'happyWhen', title: 'When happiest today?', options: ['Morning', 'School time', 'After school', 'Night time'] },
-            { kind: 'single', key: 'happyWho', title: 'Who made you happy?', options: ['Friend', 'Family', 'Teacher', 'Game/toy', 'Class fun', 'Nobody special'] },
-            { kind: 'single', key: 'happyHelp', title: 'Did happy help school or play?', options: ['School easier', 'Play more fun', 'Both better', 'no change'] },
-            { kind: 'single', key: 'happyWantMore', title: 'Want more happy tomorrow?', options: ['Yes definitely', 'Maybe', 'Not sure'] },
+            { kind: 'stars', key: 'happyStars', title: 'How strong was your happy feeling?', max: 5 },
+            { kind: 'single', key: 'happyWhen', title: 'When did you feel happiest?', options: ['Morning', 'During school', 'After school', 'Night'] },
+            { kind: 'single', key: 'happyWho', title: 'Who or what helped you feel happy?', options: ['Friend', 'Family', 'Teacher', 'Game/toy', 'Class', 'No one / nothing specific'] },
+            { kind: 'single', key: 'happyHelp', title: 'Did feeling happy help your day?', options: ['School felt easier', 'Play felt more fun', 'Both felt better', 'No change'] },
+            { kind: 'single', key: 'happyWantMore', title: 'Do you want more of this tomorrow?', options: ['Yes', 'Maybe', 'Not sure'] },
           ] satisfies Step[],
-          closing: 'Yay happy day! Happy feelings are awesome. Take big breath in, smile BIG, think happy moment 5 seconds.',
+          closing: 'Nice sharing. Take one slow breath, smile a little, and remember one good moment.',
         },
         '11-17': {
-          pageSubtitle: "🎉 AWESOME DAY! What made you happy today?",
+          pageSubtitle: 'What made you feel happy today?',
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "🎉 AWESOME DAY! What made you happy today?",
-              subtitle: 'Tap to select',
+              title: 'What made you feel happy today?',
+              subtitle: 'Tap all that fit',
               items: [
                 'Got good grades/test score',
                 'Hung out with friends',
                 'Felt proud of my work/effort',
-                'Good sleep/good energy',
+                'Slept well / had energy',
                 'Made progress on goals',
-                'Just felt good feel',
+                'Felt good for no big reason',
                 'Enjoyed gaming/hobby',
                 'Helped someone',
                 'Other',
               ],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'stars', key: 'happyStars', title: 'How big was your happy feeling today?', max: 5 },
-            { kind: 'single', key: 'happyWhen', title: 'When did you feel happiest today?', options: ['Morning', 'School time', 'After school', 'Evening/night'] },
-            { kind: 'single', key: 'happyWho', title: 'Who or what helped you feel happy?', options: ['Friend', 'Family', 'Teacher', 'Game/hobby', 'Class subject', 'Nothing specific'] },
-            { kind: 'single', key: 'happyHelp', title: 'Did happy help schoolwork or free time?', options: ['School easier', 'Free time better', 'Both better', 'No change'] },
-            { kind: 'single', key: 'happyWantMore', title: 'Want more of this tomorrow?', options: ['Yes definitely', 'Maybe', 'Not sure'] },
+            { kind: 'stars', key: 'happyStars', title: 'How strong was your happy feeling?', max: 5 },
+            { kind: 'single', key: 'happyWhen', title: 'When did you feel happiest?', options: ['Morning', 'During school', 'After school', 'Evening/night'] },
+            { kind: 'single', key: 'happyWho', title: 'Who or what helped you feel happy?', options: ['Friend', 'Family', 'Teacher', 'Game/hobby', 'School / class', 'Nothing specific'] },
+            { kind: 'single', key: 'happyHelp', title: 'Did feeling happy help your day?', options: ['School felt easier', 'Free time felt better', 'Both felt better', 'No change'] },
+            { kind: 'single', key: 'happyWantMore', title: 'Do you want more of this tomorrow?', options: ['Yes', 'Maybe', 'Not sure'] },
           ] satisfies Step[],
-          closing: 'Great sharing happy moments! Noticing good feelings helps find more. Take slow deep breath, smile big, think of happy moment 5 seconds.',
+          closing: 'Nice sharing. Notice one good thing and take one slow breath.',
         },
       },
       neutral: {
         '6-10': {
-          pageSubtitle: "🙂 A NORMAL DAY - What was the vibe?",
+          pageSubtitle: 'How was your day today?',
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "You picked 'okay'. What was your day like?",
-              subtitle: 'Tap to select',
-              items: ['Normal school day', 'Little boring', 'Waiting for fun', 'Some good some bad', 'Busy day', 'Other'],
+              title: "You chose 'okay'. What was your day like?",
+              subtitle: 'Tap all that fit',
+              items: ['A normal school day', 'A little boring', 'Waiting for something fun', 'Some good, some bad', 'A busy day', 'Other'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'neutralDayLike', title: 'Day more like:', options: ['Little boring', 'Just normal', 'Not sure', 'Okay'] },
-            { kind: 'single', key: 'neutralAnyFun', title: 'Any fun today?', options: ['Yes with friends', 'Yes in class', 'Yes at home', 'No fun'] },
-            { kind: 'single', key: 'neutralLessFunBecause', title: 'Anything made Day less fun because?', options: ['Tired', 'Bored', 'Not interested', 'All good'] },
-            { kind: 'single', key: 'neutralSchoolWork', title: 'School work today?', options: ['Easy', 'Okay', 'Hard to listen'] },
-            { kind: 'single', key: 'neutralFriends', title: 'Friends today?', options: ['Played together', 'Sometimes alone', 'Mostly alone'] },
+            { kind: 'single', key: 'neutralDayLike', title: 'Overall, your day felt like…', options: ['A little boring', 'Just normal', 'Not sure', 'Okay'] },
+            { kind: 'single', key: 'neutralAnyFun', title: 'Was there any fun today?', options: ['Yes, with friends', 'Yes, in class', 'Yes, at home', 'Not really'] },
+            { kind: 'single', key: 'neutralLessFunBecause', title: 'Did anything make the day less fun?', options: ['Tired', 'Bored', 'Not interested', 'No'] },
+            { kind: 'single', key: 'neutralSchoolWork', title: 'How was schoolwork today?', options: ['Easy', 'Okay', 'Hard to listen'] },
+            { kind: 'single', key: 'neutralFriends', title: 'How was it with friends today?', options: ['Played together', 'Sometimes alone', 'Mostly alone'] },
           ] satisfies Step[],
-          closing: 'Thanks for okay day. All kids have okay days. Pick one fun thing for tomorrow, smile about it.',
+          closing: 'Okay days are normal. Pick one small thing you want to enjoy tomorrow.',
         },
         '11-17': {
-          pageSubtitle: "🙂 A NORMAL DAY - What was the vibe?",
+          pageSubtitle: 'How was your day today?',
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "You picked 'okay'. How would you describe your day?",
-              subtitle: 'Tap to select',
-              items: ['Normal school day', 'A bit boring', 'Waiting for something', 'Mixed good and bad moments', 'Busy but okay', 'Other'],
+              title: "You chose 'okay'. How would you describe your day?",
+              subtitle: 'Tap all that fit',
+              items: ['A normal school day', 'A bit boring', 'Waiting for something', 'Mixed good and bad moments', 'Busy but okay', 'Other'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'neutralDayLike', title: 'Day felt more like:', options: ['Little boring', 'Just normal', 'Not sure', 'Okay'] },
-            { kind: 'single', key: 'neutralAnyFun', title: 'Any good moment today?', options: ['Yes with friends', 'Yes in class', 'Yes at home', 'No good moments'] },
-            { kind: 'single', key: 'neutralLessFunBecause', title: 'Anything made day less fun?', options: ['Felt tired', 'Felt bored', 'Not interested', 'Nothing'] },
-            { kind: 'single', key: 'neutralSchoolWork', title: 'How was school work today?', options: ['Easy to focus', 'Okay focus', 'Hard to focus'] },
-            { kind: 'single', key: 'neutralFriends', title: 'How with friends/classmates?', options: ['Felt included', 'Sometimes alone', 'Mostly alone'] },
+            { kind: 'single', key: 'neutralDayLike', title: 'Overall, your day felt like…', options: ['A little boring', 'Just normal', 'Not sure', 'Okay'] },
+            { kind: 'single', key: 'neutralAnyFun', title: 'Was there any good moment today?', options: ['Yes, with friends', 'Yes, in class', 'Yes, at home', 'Not really'] },
+            { kind: 'single', key: 'neutralLessFunBecause', title: 'Did anything make the day less fun?', options: ['Tired', 'Bored', 'Not interested', 'No'] },
+            { kind: 'single', key: 'neutralSchoolWork', title: 'How was schoolwork today?', options: ['Easy to focus', 'Okay to focus', 'Hard to focus'] },
+            { kind: 'single', key: 'neutralFriends', title: 'How was it with classmates?', options: ['Felt included', 'Sometimes alone', 'Mostly alone'] },
           ] satisfies Step[],
-          closing: 'Thanks for sharing okay day. Normal days happen to everyone. Pick one good thing for tomorrow and picture it 3 seconds.',
+          closing: 'Normal days happen. Pick one small good thing to look forward to tomorrow.',
         },
       },
       flat: {
         '6-10': {
-          pageSubtitle: "😐 FEELING FLAT? What's draining your energy?",
+          pageSubtitle: "Feeling low energy? What's making it hard?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "You picked 'flat'. How did day feel?",
-              subtitle: 'Tap to select',
+              title: "You chose 'flat'. What made your day feel low energy?",
+              subtitle: 'Tap all that fit',
               items: [
-                "Didn't sleep good",
+                "Didn't sleep well",
                 'Too much homework',
                 'Thinking too much',
                 'Wanted to be alone',
                 'Too much TV/phone',
                 'No energy to play',
-                'Felt blank',
+                'Felt blank or numb',
                 'Other',
               ],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'flatWhen', title: 'Flat feeling when?', options: ['All day', 'Some times', 'Little bit'] },
-            { kind: 'single', key: 'flatFunNotFun', title: 'Fun things not fun?', options: ['Games', 'Friends', 'School stuff', 'Reading', 'Nothing fun', 'Other'] },
-            { kind: 'single', key: 'flatTiredWhere', title: 'Tired where?', options: ['Body tired', 'Head tired', 'Both tired', 'Not tired'] },
-            { kind: 'single', key: 'flatWithOtherKids', title: 'With other kids?', options: ['Wanted to play', 'Stayed quiet', 'Wanted alone'] },
-            { kind: 'single', key: 'flatSleepLastNight', title: 'Sleep last night?', options: ['Good sleep', 'Okay sleep', 'Bad sleep'] },
+            { kind: 'single', key: 'flatWhen', title: 'When did the flat feeling happen?', options: ['All day', 'Sometimes', 'A little bit'] },
+            { kind: 'single', key: 'flatFunNotFun', title: "What didn't feel fun today?", options: ['Games', 'Friends', 'School stuff', 'Reading', 'Nothing was fun', 'Other'] },
+            { kind: 'single', key: 'flatTiredWhere', title: 'Where did you feel tired?', options: ['Body', 'Head', 'Both', 'Not tired'] },
+            { kind: 'single', key: 'flatWithOtherKids', title: 'How was it around other kids?', options: ['Wanted to play', 'Stayed quiet', 'Wanted to be alone'] },
+            { kind: 'single', key: 'flatSleepLastNight', title: 'How was your sleep last night?', options: ['Good', 'Okay', 'Bad'] },
           ] satisfies Step[],
-          closing: 'Thanks for flat day. Everyone has low energy days. Stand up tall, stretch arms HIGH, 3 big breaths.',
+          closing: 'Low energy days happen. Try a stretch and 3 slow breaths.',
         },
         '11-17': {
-          pageSubtitle: "😐 FEELING FLAT? What's draining your energy?",
+          pageSubtitle: "Feeling low energy? What's making it hard?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: "You picked 'flat'. What was your day like?",
-              subtitle: 'Tap to select',
+              title: "You chose 'flat'. What made your day feel low energy?",
+              subtitle: 'Tap all that fit',
               items: [
                 "Didn't sleep well",
                 'Too much homework/assignments',
@@ -863,114 +908,114 @@ function StudentCheckInFlow() {
                 'Social tiredness',
                 'Too much phone/screen time',
                 'No motivation',
-                'Felt blank/low energy',
+                'Felt blank or low energy',
                 'Other',
               ],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'flatWhen', title: 'Flat feeling when?', options: ['Most of day', 'Some parts of day', 'Short time only'] },
-            { kind: 'single', key: 'flatFunNotFun', title: 'Usually fun things not fun today?', options: ['Games', 'Hanging with friends', 'School subjects', 'Reading', 'Nothing felt fun', 'Other'] },
-            { kind: 'single', key: 'flatTiredWhere', title: 'Tired in:', options: ['Body', 'Head (hard to think)', 'Both', 'Not tired'] },
-            { kind: 'single', key: 'flatWithOtherKids', title: 'Around others today:', options: ['Wanted to join', 'Stayed quiet/away', 'Felt okay alone'] },
-            { kind: 'single', key: 'flatSleepLastNight', title: 'Sleep last night:', options: ['Good sleep', 'Okay sleep', 'Poor sleep'] },
+            { kind: 'single', key: 'flatWhen', title: 'When did the flat feeling happen?', options: ['Most of the day', 'Some parts of the day', 'Only a short time'] },
+            { kind: 'single', key: 'flatFunNotFun', title: "What didn't feel fun today?", options: ['Games', 'Hanging with friends', 'School subjects', 'Reading', 'Nothing felt fun', 'Other'] },
+            { kind: 'single', key: 'flatTiredWhere', title: 'Where did you feel tired?', options: ['Body', 'Head (hard to think)', 'Both', 'Not tired'] },
+            { kind: 'single', key: 'flatWithOtherKids', title: 'How was it around other people?', options: ['Wanted to join', 'Stayed quiet / kept distance', 'Felt okay being alone'] },
+            { kind: 'single', key: 'flatSleepLastNight', title: 'How was your sleep last night?', options: ['Good', 'Okay', 'Poor'] },
           ] satisfies Step[],
-          closing: 'Thanks for explaining flat day. Low energy days are normal. Try wake-up move: stand, stretch arms up high, 3 slow deep breaths.',
+          closing: 'Low energy days are normal. Try: stand up, stretch, and take 3 slow breaths.',
         },
       },
       worried: {
         '6-10': {
-          pageSubtitle: "😟 FEELING STRESSED? What's on your mind?",
+          pageSubtitle: "Feeling worried? What's on your mind?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: 'You picked worried. What worried you today?',
-              subtitle: 'Tap to select',
+              title: "You chose 'worried'. What worried you today?",
+              subtitle: 'Tap all that fit',
               items: ['School test/homework', 'Friends fight', 'Family things', 'Feel sick/tired', 'Night scared', 'Other'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'worriedHowBig', title: 'Worry how big?', options: ['Tiny worry', 'Medium worry', 'Very big'] },
-            { kind: 'single', key: 'worriedWhen', title: 'Worry when?', options: ['All day', 'Morning school', 'Night time', 'Some times'] },
+            { kind: 'single', key: 'worriedHowBig', title: 'How big was the worry?', options: ['A little', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'worriedWhen', title: 'When did you feel worried?', options: ['All day', 'Morning / school', 'Night', 'Sometimes'] },
             {
               kind: 'multi',
               key: 'worriedBodyFeel',
-              title: 'Body feel?',
-              subtitle: 'Tap to select',
+              title: 'How did your body feel?',
+              subtitle: 'Tap all that fit',
               items: ['Heart fast', 'Tummy funny', 'Hard breathe', 'Hands shaky', 'Nothing', 'Other'],
-              otherKey: 'mainSelectionsOther',
+              otherKey: 'worriedBodyFeelOther',
             },
-            { kind: 'single', key: 'worriedMadeHard', title: 'Worry made hard?', options: ['School work', 'Talk friends', 'Play time', 'No problem'] },
-            { kind: 'single', key: 'worriedYouDid', title: 'You did?', options: ['Told someone', 'Kept secret'] },
+            { kind: 'single', key: 'worriedMadeHard', title: 'What did worry make harder?', options: ['Schoolwork', 'Talking to friends', 'Play / free time', 'Nothing'] },
+            { kind: 'single', key: 'worriedYouDid', title: 'When you felt worried, you…', options: ['Told someone', 'Kept it to myself'] },
           ] satisfies Step[],
-          closing: 'Brave telling worry! Breathe nose 1-2-3, mouth 1-2-3-4. Try 3 times.',
+          closing: 'Thanks for sharing. Try this: breathe in 1-2-3, breathe out 1-2-3-4. Do it 3 times.',
           coping: ['🎧 5-minute breathing exercise (guided audio)', '📝 Brain dump (free-form journaling space)', '🚶 Quick walk (activity suggestion)'],
         },
         '11-17': {
-          pageSubtitle: "😟 FEELING STRESSED? What's on your mind?",
+          pageSubtitle: "Feeling worried? What's on your mind?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: 'You picked worried. What made you worried today?',
-              subtitle: 'Tap to select',
+              title: "You chose 'worried'. What made you worried today?",
+              subtitle: 'Tap all that fit',
               items: ['Exams/tests/deadlines', 'Friends/social issues', 'Family matters', 'Health/feeling unwell', 'Sleep problems', 'Future worries', 'Social media pressure', 'Other'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'worriedHowBig', title: 'How big was worry?', options: ['Tiny', 'Medium', 'Very big'] },
-            { kind: 'single', key: 'worriedWhen', title: 'Worry happened when?', options: ['All day', 'Morning school', 'Night time', 'Some times'] },
+            { kind: 'single', key: 'worriedHowBig', title: 'How big was the worry?', options: ['Small', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'worriedWhen', title: 'When did you feel worried?', options: ['All day', 'Morning / school', 'Night', 'Sometimes'] },
             {
               kind: 'multi',
               key: 'worriedBodyFeel',
-              title: 'Body felt like when worried?',
-              subtitle: 'Tap to select',
+              title: 'How did your body feel?',
+              subtitle: 'Tap all that fit',
               items: ['Heart fast', 'Tummy funny', 'Hard breathe', 'Hands shaky', 'Nothing', 'sweaty', 'Other'],
-              otherKey: 'mainSelectionsOther',
+              otherKey: 'worriedBodyFeelOther',
             },
-            { kind: 'single', key: 'worriedMadeHard', title: 'Worry made harder to:', options: ['School work', 'Talk to others', 'Enjoy free time', 'No problems'] },
-            { kind: 'single', key: 'worriedYouDid', title: 'When worried, you:', options: ['Talked to someone', 'Kept it inside'] },
+            { kind: 'single', key: 'worriedMadeHard', title: 'What did worry make harder?', options: ['Schoolwork', 'Talking to others', 'Enjoying free time', 'Nothing'] },
+            { kind: 'single', key: 'worriedYouDid', title: 'When you felt worried, you…', options: ['Talked to someone', 'Kept it inside'] },
           ] satisfies Step[],
-          closing: 'Brave sharing worries. Try calming breath: breathe in nose count 1-2-3, out mouth 1-2-3-4. Do 3 times.',
+          closing: 'Thanks for sharing. Try this: breathe in 1-2-3, breathe out 1-2-3-4. Do it 3 times.',
           coping: ['🎧 5-minute breathing exercise (guided audio)', '📝 Brain dump (free-form journaling space)', '🚶 Quick walk (activity suggestion)'],
         },
       },
       sad: {
         '6-10': {
-          pageSubtitle: "😢 YOU SEEM DOWN - What's happening?",
+          pageSubtitle: "Feeling sad? What's happening?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: 'You picked sad. What made you sad today?',
-              subtitle: 'Tap to select',
+              title: "You chose 'sad'. What made you feel sad today?",
+              subtitle: 'Tap all that fit',
               items: ['Wanted to cry', 'Games not fun', 'Very very tired', "Can't think at school", 'Feel bad about me', 'Miss someone', 'Feel alone', 'Other'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'sadHowBig', title: 'Sad how big?', options: ['Little sad', 'Medium sad', 'Very big'] },
-            { kind: 'single', key: 'sadWhen', title: 'Sad when?', options: ['Short time only', 'Some times during day', 'Most of day'] },
-            { kind: 'single', key: 'sadHardToEnjoy', title: 'Hard to enjoy fun?', options: ['Still fun', 'Little hard', 'Very hard'] },
-            { kind: 'single', key: 'sadWantToBe', title: 'Want to be?', options: ['With friends', 'Alone', 'Both okay'] },
-            { kind: 'single', key: 'sadHeadSaid', title: 'Head said when sad?', options: ['I did bad', 'Nobody likes me', "I'm not good", 'Nothing', 'Other'] },
+            { kind: 'single', key: 'sadHowBig', title: 'How big was the sad feeling?', options: ['A little', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'sadWhen', title: 'When did you feel sad?', options: ['Only a short time', 'Sometimes', 'Most of the day'] },
+            { kind: 'single', key: 'sadHardToEnjoy', title: 'Was it hard to enjoy things today?', options: ['No, still enjoyed things', 'A little hard', 'Very hard'] },
+            { kind: 'single', key: 'sadWantToBe', title: 'What did you want most?', options: ['Be with friends', 'Be alone', 'Either was okay'] },
+            { kind: 'single', key: 'sadHeadSaid', title: 'What did your head say?', options: ['I did bad', 'Nobody likes me', "I'm not good", 'Nothing', 'Other'] },
           ] satisfies Step[],
-          closing: 'Thanks for sharing sad. All kids feel sad sometimes. Hand on heart, hug arms tight, 3 slow breaths.',
+          closing: 'Thanks for telling the truth. Try: hand on heart, hug your arms, 3 slow breaths.',
         },
         '11-17': {
-          pageSubtitle: "😢 YOU SEEM DOWN - What's happening?",
+          pageSubtitle: "Feeling sad? What's happening?",
           steps: [
             {
               kind: 'multi',
               key: 'mainSelections',
-              title: 'You picked sad. What made you feel sad today?',
-              subtitle: 'Tap to select',
+              title: "You chose 'sad'. What made you feel sad today?",
+              subtitle: 'Tap all that fit',
               items: ['Felt sad/wanted to cry', 'No fun in games/hobbies', 'Very tired/low energy', 'Hard to focus/concentrate', 'Felt bad about myself', 'Missed someone important', 'Felt alone/left out', 'Other serious reason'],
               otherKey: 'mainSelectionsOther',
             },
-            { kind: 'single', key: 'sadHowBig', title: 'How big was sad feeling?', options: ['Little bit', 'Medium', 'Very big'] },
-            { kind: 'single', key: 'sadWhen', title: 'Sad happened when?', options: ['Short time only', 'Some times during day', 'Most of day'] },
-            { kind: 'single', key: 'sadHardToEnjoy', title: 'Sad made harder to enjoy:', options: ['Games/hobbies', 'Talking to people', 'School work', 'Still enjoyed things'] },
-            { kind: 'single', key: 'sadWantToBe', title: 'When sad, wanted to be:', options: ['With people', 'Alone', 'Both okay'] },
-            { kind: 'single', key: 'sadHeadSaid', title: 'What thought in head when sad?', options: ['I did something wrong', 'Nobody likes me', "I'm not good enough", 'Nothing specific', 'Other'] },
+            { kind: 'single', key: 'sadHowBig', title: 'How big was the sad feeling?', options: ['A little', 'Medium', 'Very big'] },
+            { kind: 'single', key: 'sadWhen', title: 'When did you feel sad?', options: ['Only a short time', 'Sometimes', 'Most of the day'] },
+            { kind: 'single', key: 'sadHardToEnjoy', title: 'What was harder to enjoy?', options: ['Games / hobbies', 'Talking to people', 'Schoolwork', 'I still enjoyed things'] },
+            { kind: 'single', key: 'sadWantToBe', title: 'When you felt sad, you wanted to…', options: ['Be with people', 'Be alone', 'Either was okay'] },
+            { kind: 'single', key: 'sadHeadSaid', title: 'What did your thoughts say?', options: ['I did something wrong', 'Nobody likes me', "I'm not good enough", 'Nothing specific', 'Other'] },
           ] satisfies Step[],
-          closing: 'Glad you shared sad feelings. Everyone feels sad sometimes. Try comfort tool: hand on heart, hug arms around self, 3 slow breaths.',
+          closing: 'Thanks for sharing. Try: hand on heart, hug your arms, 3 slow breaths.',
         },
       },
     } as const
@@ -996,34 +1041,50 @@ function StudentCheckInFlow() {
     setAnswers((a) => ({ ...a, [key]: value }))
   }
 
+  function renderQuestion(title: string, subtitle?: string) {
+    return (
+      <div className="space-y-1">
+        <div className="text-base font-extrabold leading-7 tracking-tight text-[rgb(var(--nefera-ink))] md:text-sm md:leading-6">{title}</div>
+        {subtitle ? <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))] md:text-sm md:leading-6">{subtitle}</div> : null}
+      </div>
+    )
+  }
+
   function renderCurrent() {
     if (!current) return null
     if (current.kind === 'stars') {
       const v = (answers[current.key] as number | undefined) ?? 0
       return (
-        <div className="space-y-4">
-          <Section title={current.title} />
-          <Stars value={v} onChange={(n) => setAnswer(current.key, n)} max={current.max} />
+        <div className="space-y-5">
+          {renderQuestion(current.title)}
+          <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/70 md:p-5 md:shadow-lg md:shadow-black/5">
+            <Stars value={v} onChange={(n) => setAnswer(current.key, n)} max={current.max} />
+          </div>
         </div>
       )
     }
     if (current.kind === 'single') {
       const v = (answers[current.key] as string | undefined) ?? ''
       return (
-        <div className="space-y-4">
-          <Section title={current.title} subtitle={current.subtitle} />
-          <Tabs value={v} onChange={(nv) => setAnswer(current.key, nv)} tabs={current.options.map((o) => ({ value: o, label: o }))} />
+        <div className="space-y-5">
+          {renderQuestion(current.title, current.subtitle)}
+          <div className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-2 shadow-none md:border-white/70 md:bg-white/70 md:p-3 md:shadow-lg md:shadow-black/5">
+            <Tabs value={v} onChange={(nv) => setAnswer(current.key, nv)} tabs={current.options.map((o) => ({ value: o, label: o }))} />
+          </div>
         </div>
       )
     }
     const selected = ((answers[current.key] as string[] | undefined) ?? []).filter(Boolean)
     const values = Object.fromEntries(current.items.map((it) => [it, selected.includes(it)])) as Record<string, boolean>
     return (
-      <div className="space-y-4">
-        <Section title={current.title} subtitle={current.subtitle} />
-        <div className="space-y-2">
+      <div className="space-y-5">
+        {renderQuestion(current.title, current.subtitle)}
+        <div className="space-y-3">
           {current.items.map((it) => (
-            <label key={it} className="flex items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
+            <label
+              key={it}
+              className="flex w-full items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-4 py-4 shadow-sm shadow-black/5 transition-colors md:hover:bg-white/85"
+            >
               <input
                 type="checkbox"
                 checked={!!values[it]}
@@ -1034,9 +1095,9 @@ function StudentCheckInFlow() {
                     checked ? Array.from(new Set([...selected, it])) : selected.filter((x) => x !== it),
                   )
                 }}
-                className="mt-1 h-4 w-4 accent-[rgb(var(--nefera-brand))]"
+                className="mt-0.5 h-5 w-5 accent-[rgb(var(--nefera-brand))]"
               />
-              <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">{it}</div>
+              <div className="text-[15px] font-semibold leading-6 text-[rgb(var(--nefera-ink))] md:text-sm md:leading-6">{it}</div>
             </label>
           ))}
         </div>
@@ -1049,6 +1110,59 @@ function StudentCheckInFlow() {
         ) : null}
       </div>
     )
+  }
+
+  function onSubmit() {
+    const createdAt = new Date().toISOString()
+    const now = Date.now()
+    const todayKey = createdAt.slice(0, 10)
+
+    dispatch({
+      type: 'student/addCheckIn',
+      checkIn: { id: makeId('chk'), createdAt, studentId, feeling, ageGroup, answers },
+    })
+
+    const lines: string[] = []
+    for (const s of steps) {
+      const v = answers[s.key]
+      if (s.kind === 'stars') {
+        const n = typeof v === 'number' ? v : 0
+        if (n > 0) lines.push(`${s.title}: ${n}/${s.max}`)
+        continue
+      }
+      if (s.kind === 'single') {
+        const t = typeof v === 'string' ? v.trim() : ''
+        if (t) lines.push(`${s.title}: ${t}`)
+        continue
+      }
+
+      const raw = Array.isArray(v) ? v.filter((x) => typeof x === 'string').map((x) => String(x).trim()).filter(Boolean) : []
+      if (!raw.length) continue
+
+      const resolved =
+        s.otherKey && raw.includes('Other')
+          ? [
+              ...raw.filter((x) => x !== 'Other'),
+              String(answers[s.otherKey] ?? '').trim() || 'Other',
+            ].filter(Boolean)
+          : raw
+
+      if (resolved.length) lines.push(`${s.title}: ${resolved.join(', ')}`)
+    }
+
+    dispatch({
+      type: 'student/addJournal',
+      payload: {
+        id: makeId('jrnl'),
+        title: `${feelingEmoji(feeling)} ${feelingLabel(feeling)}`,
+        content: lines.join('\n'),
+        createdAt: now,
+        dateKey: todayKey,
+      },
+    })
+
+    const shouldCoping = state.schoolConfig.features.copingTools && (feeling === 'worried' || feeling === 'sad')
+    navigate(shouldCoping ? `/student/coping?feeling=${encodeURIComponent(feeling)}` : '/student/sleep', { replace: true })
   }
 
   return (
@@ -1087,16 +1201,7 @@ function StudentCheckInFlow() {
                   Next
                 </Button>
               ) : (
-                <Button
-                  disabled={!canContinue}
-                  onClick={() => {
-                    dispatch({
-                      type: 'student/addCheckIn',
-                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), studentId, feeling, ageGroup, answers },
-                    })
-                    setJournalPrompt(true)
-                  }}
-                >
+                <Button disabled={!canContinue} onClick={onSubmit}>
                   Submit
                 </Button>
               )}
@@ -1117,17 +1222,7 @@ function StudentCheckInFlow() {
                   Next
                 </Button>
               ) : (
-                <Button
-                  className="h-14 w-full"
-                  disabled={!canContinue}
-                  onClick={() => {
-                    dispatch({
-                      type: 'student/addCheckIn',
-                      checkIn: { id: makeId('chk'), createdAt: new Date().toISOString(), studentId, feeling, ageGroup, answers },
-                    })
-                    setJournalPrompt(true)
-                  }}
-                >
+                <Button className="h-14 w-full" disabled={!canContinue} onClick={onSubmit}>
                   Submit
                 </Button>
               )}
@@ -1135,51 +1230,69 @@ function StudentCheckInFlow() {
           </div>
         </div>
       </div>
+    </Page>
+  )
+}
 
-      <Modal
-        open={journalPrompt}
-        onClose={() => {
-          setJournalPrompt(false)
-          navigate('/student/sleep', { replace: true })
-        }}
-        title="Journal this down?"
-        description="A quick note helps you remember what mattered."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => navigate('/student/sleep', { replace: true })}>
-              Not now
-            </Button>
-            <Button onClick={() => navigate(`/student/journal/write?title=${encodeURIComponent(`${feelingEmoji(feeling)} ${feelingLabel(feeling)}`)}&feeling=${feeling}`, { replace: true })}>
-              Write journal
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-5 text-sm leading-6 text-[rgb(var(--nefera-muted))]">{flow.closing}</div>
-          {'coping' in flow ? (
-            <div className="rounded-2xl border border-white/70 bg-white/70 p-5">
-              <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">💪 COPING POWER-UP - Pick one to feel better:</div>
-              <div className="mt-3 grid gap-2">
-                {flow.coping.map((x) => (
-                  <button
-                    key={x}
-                    type="button"
-                    onClick={() => {
-                      if (x.includes('breathing')) navigate('/student/soul-space')
-                      else if (x.includes('Brain dump')) navigate(`/student/journal/write?title=${encodeURIComponent('📝 Brain dump')}`, { replace: true })
-                      else setJournalPrompt(false)
-                    }}
-                    className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-4 py-3 text-left text-sm font-semibold text-[rgb(var(--nefera-ink))]"
-                  >
-                    {x}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+function StudentCopingTools() {
+  const { state } = useNefera()
+  const navigate = useNavigate()
+  const [search] = useSearchParams()
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: '' })
+  const feeling = (search.get('feeling') as Feeling | null) ?? 'worried'
+
+  useEffect(() => {
+    if (!state.schoolConfig.features.copingTools) return
+    const t = window.setTimeout(() => navigate('/student/sleep', { replace: true }), 12000)
+    return () => window.clearTimeout(t)
+  }, [navigate, state.schoolConfig.features.copingTools])
+
+  if (!state.schoolConfig.features.copingTools) return <Navigate to="/student/sleep" replace />
+
+  const suggestions =
+    feeling === 'sad'
+      ? [
+          { title: 'Grounding', body: 'Name 3 things you see, 2 you can touch, 1 you can hear.' },
+          { title: 'Tiny step', body: 'Pick one small task (2 minutes). Start, then stop.' },
+          { title: 'Reach out', body: 'Message a trusted adult if you feel unsafe or overwhelmed.' },
+        ]
+      : [
+          { title: 'Breathing', body: 'In 1-2-3, out 1-2-3-4. Repeat 5 times.' },
+          { title: 'Body reset', body: 'Drop your shoulders, unclench your jaw, relax your hands.' },
+          { title: 'Name the worry', body: 'Write one sentence: “I’m worried about ___.”' },
+        ]
+
+  return (
+    <Page emoji="🌿" title="Coping tools" subtitle="A small reset before the next step.">
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          {suggestions.map((s) => (
+            <Card key={s.title} className="transition hover:bg-black/5">
+              <CardHeader emoji="✨" title={s.title} subtitle="Try this once." />
+              <CardBody className="space-y-4">
+                <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">{s.body}</div>
+                <Divider />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setToast({ open: true, message: `Saved: ${s.title}` })
+                    window.setTimeout(() => navigate('/student/sleep', { replace: true }), 800)
+                  }}
+                >
+                  I tried this
+                </Button>
+              </CardBody>
+            </Card>
+          ))}
         </div>
-      </Modal>
+        <Card>
+          <CardBody className="flex justify-end">
+            <Button onClick={() => navigate('/student/sleep', { replace: true })}>Continue to sleep tracker 🌙</Button>
+          </CardBody>
+        </Card>
+      </div>
+      <Toast open={toast.open} message={toast.message} onClose={() => setToast({ open: false, message: '' })} />
     </Page>
   )
 }
@@ -1200,37 +1313,40 @@ function StudentSleepTracker() {
 
   return (
     <Page emoji="🌙" title="Sleep tracker" subtitle="How was your sleep last night?">
-      <Card>
-        <CardBody className="space-y-4">
-          <Section title='Question' subtitle='"How was your sleep last night?"' />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {([
-              { label: '1–4 hours', value: '1-4' },
-              { label: '5 hours', value: '5' },
-              { label: '6 hours', value: '6' },
-              { label: '7 hours', value: '7' },
-              { label: '8+ hours', value: '8+' },
-            ] as const).map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setBucket(o.value)}
-                className={cx(
-                  'grid h-16 w-full place-items-center rounded-full border border-[rgb(var(--nefera-border))] bg-white text-sm font-extrabold text-[rgb(var(--nefera-ink))] shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/85 md:hover:shadow-xl md:hover:shadow-black/10',
-                  bucket === o.value ? 'ring-4 ring-[rgba(98,110,255,0.22)]' : '',
-                )}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <div className="hidden justify-end md:flex">
-            <Button disabled={!bucket} onClick={onSave}>
-              Submit
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardBody className="space-y-4">
+            <Section title='Question' subtitle='"How was your sleep last night?"' />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {([
+                { label: '1–4 hours', value: '1-4' },
+                { label: '5 hours', value: '5' },
+                { label: '6 hours', value: '6' },
+                { label: '7 hours', value: '7' },
+                { label: '8+ hours', value: '8+' },
+              ] as const).map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setBucket(o.value)}
+                  className={cx(
+                    'grid h-16 w-full place-items-center rounded-full border border-[rgb(var(--nefera-border))] bg-white text-sm font-extrabold text-[rgb(var(--nefera-ink))] shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/70 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/85 md:hover:shadow-xl md:hover:shadow-black/10',
+                    bucket === o.value ? 'ring-4 ring-[rgba(98,110,255,0.22)]' : '',
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <Divider />
+            <div className="hidden justify-end md:flex">
+              <Button disabled={!bucket} onClick={onSave}>
+                Submit
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
       <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3">
           <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
@@ -1362,173 +1478,53 @@ function wellbeingSignals(checkIns: StudentCheckIn[], sleepLogs: { createdAt: st
 }
 
 function StudentJournalWrite() {
-  const { state, dispatch } = useNefera()
-  const [search] = useSearchParams()
+  const { dispatch } = useNefera()
   const navigate = useNavigate()
-  const todayKey = new Date().toISOString().split('T')[0]
-  const todaysEntry = state.student.journal.find((j) => j.dateKey === todayKey)
-  const isEdit = Boolean(todaysEntry)
-  const [now] = useState(() => Date.now())
-
-  const [title, setTitle] = useState(todaysEntry?.title ?? search.get('title') ?? '')
-  const [content, setContent] = useState(todaysEntry?.content ?? '')
-  const [showReflection, setShowReflection] = useState(false)
-  const [feeling, setFeeling] = useState<Feeling | ''>(((search.get('feeling') as Feeling | null) ?? '') as Feeling | '')
+  const [content, setContent] = useState('')
   const [toast, setToast] = useState<{ open: boolean; message: string; tone?: 'ok' | 'warn' }>({ open: false, message: '' })
 
-  const locked = Boolean(todaysEntry && now - todaysEntry.createdAt > 24 * 60 * 60 * 1000)
-  const canSave = !locked && !!title.trim() && !!content.trim()
-
-  const promptCards = useMemo(() => {
-    const base = [
-      {
-        title: 'What happened today?',
-        body: 'Name the moment. Keep it simple and honest.',
-        template: 'What happened today?\n',
-      },
-      {
-        title: 'What did you feel in your body?',
-        body: 'Tight chest, heavy eyes, buzzing energy — describe it.',
-        template: 'What did you feel in your body?\n',
-      },
-      {
-        title: 'What do you need tomorrow?',
-        body: 'One small thing that would make it 5% easier.',
-        template: 'What do you need tomorrow?\n',
-      },
-      {
-        title: 'One kind sentence to yourself',
-        body: 'Talk to you like you would talk to a friend.',
-        template: 'One kind sentence to myself:\n',
-      },
-    ] as const
-
-    if (!feeling) return base
-
-    const first =
-      feeling === 'happy'
-        ? { title: 'What made you feel happy?', body: 'Name the details so your brain can find them again.', template: 'What made me feel happy?\n' }
-        : feeling === 'worried'
-          ? { title: 'What worried you?', body: 'Name it clearly. Then name what you can control.', template: 'What worried me?\n' }
-          : feeling === 'sad'
-            ? { title: 'What made you feel sad?', body: 'Name the loss or the letdown without judging yourself.', template: 'What made me feel sad?\n' }
-            : feeling === 'flat'
-              ? { title: 'What felt hard to start today?', body: 'Flat often means tired, overloaded, or numb.', template: 'What felt hard to start today?\n' }
-              : { title: 'What felt neutral today?', body: 'Sometimes neutral is okay. Name what was steady.', template: 'What felt steady today?\n' }
-
-    return [first, ...base]
-  }, [feeling])
+  const canSave = !!content.trim()
 
   function onSave() {
     const now = Date.now()
-    if (todaysEntry) {
-      if (now - todaysEntry.createdAt > 24 * 60 * 60 * 1000) {
-        setToast({ open: true, message: 'This entry is locked after 24 hours.', tone: 'warn' })
-        return
-      }
-      dispatch({
-        type: 'student/updateJournal',
-        payload: { id: todaysEntry.id, title: title.trim(), content: content.trim(), updatedAt: now },
-      })
-    } else {
-      dispatch({
-        type: 'student/addJournal',
-        payload: { id: makeId('jrnl'), title: title.trim(), content: content.trim(), createdAt: now, dateKey: todayKey },
-      })
-    }
-    setToast({ open: true, message: isEdit ? 'Updated. You took care of your story.' : 'Saved. You showed up for yourself.' })
-    setShowReflection(true)
+    const trimmed = content.trim()
+    if (!trimmed) return
+    const firstLine = trimmed.split('\n')[0]?.trim() ?? ''
+    const title = (firstLine || 'Journal').slice(0, 56)
+    const dateKey = new Date().toISOString().slice(0, 10)
+    dispatch({
+      type: 'student/addJournal',
+      payload: { id: makeId('jrnl'), title, content: trimmed, createdAt: now, dateKey },
+    })
+    setToast({ open: true, message: 'Saved.' })
+    setContent('')
+    navigate('/student/journal/history', { replace: true })
   }
 
   return (
-    <Page
-      emoji="📝"
-      title="Journal"
-      subtitle={
-        locked
-          ? 'This entry is locked after 24 hours. You can always write a new one tomorrow.'
-          : isEdit
-            ? 'You can edit today’s entry. Gentle is still real.'
-            : 'A quiet space to reflect. One honest paragraph counts.'
-      }
-    >
-      <Card className="overflow-hidden">
-        <CardBody className="space-y-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                inputClassName="h-14 text-base font-extrabold tracking-tight"
-                disabled={locked}
-                hint={locked ? 'Locked after 24 hours.' : isEdit ? 'Editing today’s entry.' : 'A few words is enough. You can always change it later.'}
-              />
-            </div>
-            {locked ? (
-              <div className="pt-2">
-                <Badge tone="warn">Locked</Badge>
-              </div>
-            ) : isEdit ? (
-              <div className="pt-2">
-                <Badge>Editing</Badge>
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/70 bg-white/55 p-4 shadow-lg shadow-black/5">
-            <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">Feeling</div>
-            <Segmented
-              value={feeling}
-              onChange={locked ? () => void 0 : (v) => setFeeling(v as Feeling)}
-              className={cx('flex-wrap', locked ? 'opacity-60' : undefined)}
-              options={[
-                { value: '', label: '—' },
-                { value: 'happy', label: 'Happy' },
-                { value: 'neutral', label: 'Neutral' },
-                { value: 'flat', label: 'Flat' },
-                { value: 'worried', label: 'Worried' },
-                { value: 'sad', label: 'Sad' },
-              ]}
+    <Page emoji="📝" title="Journal">
+      <div className="space-y-4">
+        <Card className="overflow-hidden">
+          <CardBody className="space-y-7 px-4 py-6 md:space-y-5 md:px-6 md:py-6">
+            <div className="pt-2 md:pt-0" />
+            <TextArea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="py-2"
+              inputClassName="min-h-[66vh] px-4 py-4 text-[16px] leading-8 shadow-inner shadow-black/5 md:min-h-[54vh] md:text-base md:leading-7"
             />
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {promptCards.slice(0, 4).map((p) => (
-              <Card key={p.title} className="hover:translate-y-0">
-                <CardBody className="space-y-3">
-                  <Section title={p.title} subtitle={p.body} />
-                  <Button
-                    variant="secondary"
-                    disabled={locked}
-                    onClick={() =>
-                      setContent((prev) => {
-                        const next = prev.trimEnd()
-                        const spacer = next ? '\n\n' : ''
-                        return `${next}${spacer}${p.template}`
-                      })
-                    }
-                  >
-                    Add prompt
-                  </Button>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
-          <TextArea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            disabled={locked}
-            inputClassName="min-h-[54vh] text-base leading-7"
-            hint="Write for you. Start messy. Keep it kind."
-          />
-          <div className="hidden flex-wrap items-center justify-end gap-2 pt-1 md:flex">
-            <Button variant="ghost" onClick={() => navigate('/student/dashboard')}>
-              Cancel
-            </Button>
-            <Button disabled={!canSave} onClick={onSave}>
-              {isEdit ? 'Update entry' : 'Save entry'}
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+            <div className="pb-2 md:pb-0" />
+            <div className="hidden flex-wrap items-center justify-end gap-2 pt-1 md:flex">
+              <Button variant="ghost" onClick={() => navigate('/student/dashboard')}>
+                Cancel
+              </Button>
+              <Button disabled={!canSave} onClick={onSave}>
+                Save
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
       <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3">
           <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
@@ -1537,45 +1533,12 @@ function StudentJournalWrite() {
                 Cancel
               </Button>
               <Button className="h-14 w-full" disabled={!canSave} onClick={onSave}>
-                {isEdit ? 'Update' : 'Save'}
+                Save
               </Button>
             </div>
           </div>
         </div>
       </div>
-      <Modal
-        open={showReflection}
-        onClose={() => {
-          setShowReflection(false)
-          navigate('/student/journal/history', { replace: true })
-        }}
-        title="You did something important"
-        description="A small reflection is a real skill. You can keep it simple."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setShowReflection(false)}>
-              Keep writing
-            </Button>
-            <Button
-              onClick={() => {
-                setShowReflection(false)
-                navigate('/student/journal/history', { replace: true })
-              }}
-            >
-              View history
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm leading-6 text-[rgb(var(--nefera-muted))]">
-            If today felt heavy, you’re allowed to take it one small step at a time. If today felt good, you’re allowed to enjoy that too.
-          </div>
-          <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm leading-6 text-[rgb(var(--nefera-muted))]">
-            Try one tiny anchor: water, fresh air, 60 seconds of breathing, or one message to someone safe.
-          </div>
-        </div>
-      </Modal>
       <Toast open={toast.open} tone={toast.tone} message={toast.message} onClose={() => setToast({ open: false, message: '' })} />
     </Page>
   )
@@ -1583,9 +1546,60 @@ function StudentJournalWrite() {
 
 function StudentJournalPast() {
   const { state } = useNefera()
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const weeks = useMemo(() => {
+    const entries = [...state.student.journal].sort((a, b) => b.createdAt - a.createdAt)
+
+    const weekStart = (dateKey: string) => {
+      const d = new Date(`${dateKey}T00:00:00`)
+      const dow = d.getDay()
+      const sinceMonday = (dow + 6) % 7
+      d.setDate(d.getDate() - sinceMonday)
+      return d.toISOString().slice(0, 10)
+    }
+
+    const byWeek = new Map<string, Map<string, typeof entries>>()
+    for (const e of entries) {
+      const wk = weekStart(e.dateKey)
+      const existingWeek = byWeek.get(wk) ?? new Map<string, typeof entries>()
+      const dayEntries = existingWeek.get(e.dateKey) ?? []
+      dayEntries.push(e)
+      existingWeek.set(e.dateKey, dayEntries)
+      byWeek.set(wk, existingWeek)
+    }
+
+    const sortedWeeks = Array.from(byWeek.entries())
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([weekKey, dayMap]) => {
+        const days = Array.from(dayMap.entries())
+          .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+          .map(([dateKey, dayEntries]) => ({
+            dateKey,
+            entries: dayEntries.sort((a, b) => b.createdAt - a.createdAt),
+          }))
+        return { weekKey, days }
+      })
+
+    return sortedWeeks
+  }, [state.student.journal])
+
+  const formatDayLabel = (dateKey: string) => {
+    const d = new Date(`${dateKey}T00:00:00`)
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  }
+
+  const previewText = (body: string) => {
+    const raw = String(body ?? '').trim()
+    if (!raw) return ''
+    const lines = raw.split('\n').slice(0, 2)
+    const joined = lines.join('\n').trim()
+    return joined.length > 140 ? `${joined.slice(0, 140).trimEnd()}…` : joined
+  }
+
   return (
-    <Page emoji="🗓️" title="Past entries" subtitle="A gentle timeline of thoughts and growth.">
-      <div className="grid gap-3">
+    <Page emoji="🗓️" title="Past entries">
+      <div className="grid gap-4">
         {state.student.journal.length === 0 ? (
           <Card>
             <CardHeader emoji="📝" title="No entries yet" subtitle="Start with one honest sentence. It counts." />
@@ -1599,21 +1613,47 @@ function StudentJournalPast() {
             </CardBody>
           </Card>
         ) : null}
-        {state.student.journal.map((e) => (
-          <Card key={e.id}>
-            <CardBody className="space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{e.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
-                    <span>{formatShort(e.createdAt)}</span>
-                    {e.updatedAt ? <Badge>Edited</Badge> : null}
+        {weeks.map((w) => (
+          <div key={w.weekKey} className="space-y-4">
+            <div className="px-1 text-sm font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">Week of {formatDayLabel(w.weekKey)}</div>
+            {w.days.map((d) => (
+              <Card key={d.dateKey}>
+                <CardBody className="space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatDayLabel(d.dateKey)}</div>
+                    <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                      {d.entries.length} entry{d.entries.length === 1 ? '' : 'ies'}
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="text-sm leading-7 text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{e.content}</div>
-            </CardBody>
-          </Card>
+                  <div className="grid gap-3">
+                    {d.entries.map((e) => {
+                      const open = !!expanded[e.id]
+                      const preview = previewText(e.content)
+                      return (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setExpanded((m) => ({ ...m, [e.id]: !m[e.id] }))}
+                          className={cx(
+                            'w-full min-h-14 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white px-4 py-4 text-left shadow-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/85 hover:shadow-xl active:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(98,110,255,0.18)] focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+                            open ? 'ring-4 ring-[rgba(98,110,255,0.18)]' : '',
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(e.createdAt)}</div>
+                            {e.updatedAt ? <Badge>Edited</Badge> : null}
+                          </div>
+                          <div className="mt-2 text-[15px] leading-7 text-[rgb(var(--nefera-muted))] whitespace-pre-wrap md:text-sm md:leading-6">
+                            {open ? e.content : preview}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
         ))}
       </div>
     </Page>
@@ -2025,12 +2065,14 @@ function StudentGroups() {
 function StudentInbox() {
   const { state, dispatch } = useNefera()
   const [openId, setOpenId] = useState<string | null>(null)
-  const msg = state.student.inbox.find((m) => m.id === openId) ?? null
-  const unread = state.student.inbox.filter((m) => !m.readAt).length
+  const studentId = state.parent.children[0]?.id ?? state.teacher.students[0]?.id ?? 'stu_1'
+  const visible = state.student.inbox.filter((m) => !m.toStudentId || m.toStudentId === studentId)
+  const msg = visible.find((m) => m.id === openId) ?? null
+  const unread = visible.filter((m) => !m.readAt).length
   return (
     <Page emoji="📥" title="Inbox" subtitle={`${unread} unread message${unread === 1 ? '' : 's'}.`}>
       <div className="grid gap-3">
-        {state.student.inbox.map((m) => (
+        {visible.map((m) => (
           <button
             key={m.id}
             type="button"
@@ -2075,7 +2117,7 @@ function StudentInbox() {
 }
 
 function StudentReportIncident() {
-  const { dispatch } = useNefera()
+  const { state, dispatch } = useNefera()
   const [type, setType] = useState('Bullying / Harassment')
   const [desc, setDesc] = useState('')
   const [anon, setAnon] = useState(true)
@@ -2084,6 +2126,23 @@ function StudentReportIncident() {
   const [toast, setToast] = useState(false)
   const canSubmit = !!desc.trim()
   const reportHint = useFirstVisitHint('nefera_hint_report_incident_v1')
+  if (!state.schoolConfig.features.reports) {
+    return (
+      <Page emoji="🛡️" title="Report incident" subtitle="You can report anonymously. Your safety matters.">
+        <Card>
+          <CardHeader emoji="🔒" title="Reporting is unavailable" subtitle="Your school has disabled reports right now." />
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">If you need support, try journaling or reach out to a trusted adult.</div>
+            <Link to="/student/dashboard">
+              <Button size="sm" variant="secondary">
+                Back
+              </Button>
+            </Link>
+          </CardBody>
+        </Card>
+      </Page>
+    )
+  }
   return (
     <Page emoji="🛡️" title="Report incident" subtitle="You can report anonymously. Your safety matters.">
       {submitted ? (
@@ -2516,72 +2575,160 @@ function StudentProfile() {
 }
 
 function TeacherDashboard() {
-  const { state } = useNefera()
+  const { state, dispatch } = useNefera()
   const { user } = useAuth()
   const students = state.teacher.students
   const flagged = students.filter((s) => s.flags !== 'none').length
   const crisis = students.filter((s) => s.flags === 'crisis').length
   const high = students.filter((s) => s.flags === 'red').length
+  const [toStudentId, setToStudentId] = useState(students[0]?.id ?? '')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [smsPlaceholder, setSmsPlaceholder] = useState(false)
+  const [toast, setToast] = useState(false)
+  const resolvedToStudentId = toStudentId || students[0]?.id || ''
+  const canSend = state.schoolConfig.features.messaging && !!resolvedToStudentId && !!subject.trim() && !!body.trim()
+
+  function onSend() {
+    if (!canSend) return
+    dispatch({
+      type: 'teacher/sendMessage',
+      item: { id: makeId('t_msg'), createdAt: new Date().toISOString(), toStudentId: resolvedToStudentId, subject: subject.trim(), body: body.trim() },
+    })
+    setSubject('')
+    setBody('')
+    setToast(true)
+  }
 
   return (
     <Page emoji="🧑‍🏫" title={`Welcome, ${user?.name ?? 'Teacher'}`} subtitle="Class overview and quick actions.">
-      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-        <Card>
+      <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="space-y-4">
           <CardHeader emoji="📚" title="Today" subtitle="A quick snapshot to guide support." />
-          <CardBody className="grid gap-3 md:grid-cols-2">
-            <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
-            <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
-            <StatPill emoji="🟠" label="Watch" value={`${students.filter((s) => s.flags === 'orange').length}`} />
-            <StatPill emoji="🛟" label="High/Crisis" value={`${high + crisis}`} />
+          <CardBody className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
+              <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
+              <StatPill emoji="🟠" label="Watch" value={`${students.filter((s) => s.flags === 'orange').length}`} />
+              <StatPill emoji="🛟" label="High/Crisis" value={`${high + crisis}`} />
+            </div>
+          </CardBody>
+          </Card>
+          <Card className="space-y-4">
+          <CardHeader emoji="⚡" title="Quick actions" subtitle="Keep communication simple and timely." />
+          <CardBody className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to="/teacher/broadcast">
+                <Button>Broadcast 📣</Button>
+              </Link>
+              <Link to="/teacher/students">
+                <Button variant="secondary">View students</Button>
+              </Link>
+            </div>
+          </CardBody>
+          </Card>
+        </div>
+
+        <Card className="space-y-4">
+          <CardHeader
+            emoji="🚩"
+            title="Students needing attention"
+            subtitle="Flags help route support to the right team."
+            right={
+              <Link to="/teacher/students">
+                <Button size="sm" variant="secondary">
+                  View all
+                </Button>
+              </Link>
+            }
+          />
+          <CardBody className="space-y-4">
+            <div className="grid gap-2">
+              {students.filter((s) => s.flags !== 'none').slice(0, 6).map((s) => (
+                <Link
+                  key={s.id}
+                  to={`/teacher/students/${s.id}`}
+                  className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{s.name}</div>
+                      <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{s.grade}</div>
+                    </div>
+                    <Badge tone={flagTone(s.flags)}>{flagLabel(s.flags)}</Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {students.every((s) => s.flags === 'none') ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                <div className="text-sm text-[rgb(var(--nefera-muted))]">No flags right now. Use observations to note changes and follow up early.</div>
+                <div className="mt-3">
+                  <Link to="/teacher/students">
+                    <Button variant="secondary">View students</Button>
+                  </Link>
+                </div>
+              </div>
+            ) : null}
           </CardBody>
         </Card>
-        <Card>
-          <CardHeader emoji="⚡" title="Quick actions" subtitle="Keep communication simple and timely." />
-          <CardBody className="flex flex-wrap items-center gap-2">
-            <Link to="/teacher/broadcast">
-              <Button>Broadcast 📣</Button>
-            </Link>
-            <Link to="/teacher/students">
-              <Button variant="secondary">View students</Button>
-            </Link>
-          </CardBody>
+
+        <Card className="space-y-4">
+          <CardHeader emoji="💬" title="Message a student" subtitle="Send a quick supportive note to a specific student." />
+          {!state.schoolConfig.features.messaging ? (
+            <CardBody className="space-y-4">
+              <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4 text-sm text-[rgb(var(--nefera-muted))]">
+                Messaging is currently disabled by your school.
+              </div>
+              <Link to="/teacher/students">
+                <Button variant="secondary">View students</Button>
+              </Link>
+            </CardBody>
+          ) : (
+            <CardBody className="space-y-4">
+              <div className="space-y-3">
+                <Section title="Compose" />
+                <Select
+                  label="Student"
+                  value={resolvedToStudentId}
+                  onChange={setToStudentId}
+                  options={
+                    students.length
+                      ? students.map((s) => ({ value: s.id, label: `${s.name} • ${s.grade}` }))
+                      : [{ value: '', label: 'No students' }]
+                  }
+                />
+                <Input label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
+                <TextArea label="Message" value={body} onChange={(e) => setBody(e.target.value)} inputClassName="min-h-32" />
+              </div>
+              <Divider />
+              <div className="space-y-3">
+                <Section title="Delivery" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Chip selected={!smsPlaceholder} onClick={() => setSmsPlaceholder(false)}>
+                    In-app
+                  </Chip>
+                  <Chip selected={smsPlaceholder} onClick={() => setSmsPlaceholder(true)}>
+                    SMS placeholder
+                  </Chip>
+                </div>
+                {smsPlaceholder ? (
+                  <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4 text-sm text-[rgb(var(--nefera-muted))]">
+                    SMS sending is a placeholder here (no SMS is sent). This will still deliver as an in-app message.
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex justify-end">
+                <Button disabled={!canSend} onClick={onSend}>
+                  Send
+                </Button>
+              </div>
+            </CardBody>
+          )}
         </Card>
       </div>
-
-      <Card className="mt-4">
-        <CardHeader
-          emoji="🚩"
-          title="Students needing attention"
-          subtitle="Flags help route support to the right team."
-          right={
-            <Link to="/teacher/students" className="text-sm font-semibold text-[rgb(var(--nefera-brand))]">
-              View all
-            </Link>
-          }
-        />
-        <CardBody className="grid gap-2">
-          {students.filter((s) => s.flags !== 'none').slice(0, 6).map((s) => (
-            <Link
-              key={s.id}
-              to={`/teacher/students/${s.id}`}
-              className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{s.name}</div>
-                  <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{s.grade}</div>
-                </div>
-                <Badge tone={flagTone(s.flags)}>{flagLabel(s.flags)}</Badge>
-              </div>
-            </Link>
-          ))}
-          {students.every((s) => s.flags === 'none') ? (
-            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
-              No flags right now. Use observations to note changes and follow up early.
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
+      <Toast open={toast} message="Message sent." onClose={() => setToast(false)} />
     </Page>
   )
 }
@@ -2604,21 +2751,23 @@ function TeacherBroadcast() {
 
   return (
     <Page emoji="📣" title="Broadcast" subtitle="Send a supportive message to students.">
-      <Card>
-        <CardBody className="space-y-3">
-          <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <TextArea label="Message" value={body} onChange={(e) => setBody(e.target.value)} inputClassName="min-h-40" />
-          <Divider />
-          <div className="hidden justify-end gap-2 md:flex">
-            <Button variant="ghost" onClick={() => navigate('/teacher/dashboard')}>
-              Cancel
-            </Button>
-            <Button disabled={!canSend} onClick={onSend}>
-              Send
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardBody className="space-y-4">
+            <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <TextArea label="Message" value={body} onChange={(e) => setBody(e.target.value)} inputClassName="min-h-40" />
+            <Divider />
+            <div className="hidden justify-end gap-2 md:flex">
+              <Button variant="ghost" onClick={() => navigate('/teacher/dashboard')}>
+                Cancel
+              </Button>
+              <Button disabled={!canSend} onClick={onSend}>
+                Send
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
       <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3">
           <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
@@ -2696,82 +2845,620 @@ function TeacherProfile() {
 function ParentDashboard() {
   const { state } = useNefera()
   const { user } = useAuth()
+  const canMessageSchool = state.schoolConfig.features.messaging
+  const canReportIncident = state.schoolConfig.features.reports
   const child = state.parent.children[0]
+  const childId = child?.id ?? 'stu_1'
+  const todayKey = getTodayISO()
+
+  function parseGradeNumber(value: string | undefined) {
+    const text = String(value ?? '')
+    const m = text.match(/(\d+)/)
+    if (!m) return undefined
+    const n = Number(m[1])
+    return Number.isFinite(n) ? n : undefined
+  }
+
+  const childGradeNum = parseGradeNumber(child?.grade)
+  const maxGrade = state.schoolConfig.parent.maxGrade
+  const isGradeRestricted = !state.schoolConfig.parent.allowBeyondMax && childGradeNum !== undefined && childGradeNum > maxGrade
+
+  const childCheckIns = useMemo(() => state.student.checkIns.filter((c) => (c.studentId ?? childId) === childId), [childId, state.student.checkIns])
+  const last7Days = useMemo(() => lastDaysISO(7), [])
+  const checkInByDay = useMemo(() => latestCheckInByDay(childCheckIns), [childCheckIns])
+  const emotionPcts = useMemo(() => {
+    const counts: Record<Feeling, number> = { happy: 0, neutral: 0, flat: 0, worried: 0, sad: 0 }
+    for (const day of last7Days) {
+      const c = checkInByDay.get(day)
+      if (!c) continue
+      counts[c.feeling]++
+    }
+    const total = Object.values(counts).reduce((a, n) => a + n, 0)
+    const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0)
+    return { total, pctByFeeling: { happy: pct(counts.happy), neutral: pct(counts.neutral), flat: pct(counts.flat), worried: pct(counts.worried), sad: pct(counts.sad) } }
+  }, [checkInByDay, last7Days])
+  const journalToday = state.student.journal.some((j) => j.dateKey === todayKey)
+
   return (
     <Page emoji="👪" title={`Welcome, ${user?.name ?? 'Parent'}`} subtitle="A calm overview and simple next steps.">
-      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-        <Card>
-          <CardHeader emoji="🧒" title="Child" subtitle="Overview for your child." />
-          <CardBody className="space-y-2">
-            <div className="text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{child?.name ?? '—'}</div>
-            <div className="text-sm font-semibold text-[rgb(var(--nefera-muted))]">{child?.grade ?? ''}</div>
+      {!state.schoolConfig.features.parentDashboard ? (
+        <Card className="space-y-4">
+          <CardHeader emoji="🔒" title="Parent dashboard is unavailable" subtitle="Your school has disabled it right now." />
+          <CardBody className="space-y-3">
+            <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">You can still reach out to the school using the options below.</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canMessageSchool ? (
+                <Link to="/parent/message">
+                  <Button variant="secondary">Message school 💌</Button>
+                </Link>
+              ) : null}
+              {canReportIncident ? (
+                <Link to="/parent/report-incident">
+                  <Button variant="secondary">Report incident 🛡️</Button>
+                </Link>
+              ) : null}
+            </div>
           </CardBody>
         </Card>
-        <Card>
-          <CardHeader emoji="⚡" title="Quick actions" subtitle="Small steps at home and school." />
-          <CardBody className="flex flex-wrap items-center gap-2">
-            <Link to="/parent/checklist">
-              <Button>Home checklist ✅</Button>
-            </Link>
-            <Link to="/parent/message">
-              <Button variant="secondary">Message school 💌</Button>
-            </Link>
-            <Link to="/parent/report-incident">
-              <Button variant="secondary">Report incident 🛡️</Button>
-            </Link>
+      ) : (
+        isGradeRestricted ? (
+          <Card className="space-y-4">
+            <CardHeader emoji="🔒" title="Limited access" subtitle={`This dashboard is available up to Grade ${maxGrade}.`} />
+            <CardBody className="space-y-4">
+              <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">You can still use the quick actions below.</div>
+              <div className="space-y-3">
+                <Section title="At home" />
+                <Link to="/parent/checklist">
+                  <Button>Home checklist ✅</Button>
+                </Link>
+              </div>
+              <Divider />
+              <div className="space-y-3">
+                <Section title="Contact school" />
+                <div className="flex flex-wrap items-center gap-2">
+                  {canMessageSchool ? (
+                    <Link to="/parent/message">
+                      <Button variant="secondary">Message school 💌</Button>
+                    </Link>
+                  ) : null}
+                  {canReportIncident ? (
+                    <Link to="/parent/report-incident">
+                      <Button variant="secondary">Report incident 🛡️</Button>
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card className="space-y-4">
+                <CardHeader emoji="🧒" title="Child" subtitle="Overview for your child." />
+                <CardBody className="space-y-4">
+                  <div className="space-y-1">
+                    <div className="text-base font-extrabold tracking-tight text-[rgb(var(--nefera-ink))]">{child?.name ?? '—'}</div>
+                    <div className="text-sm font-semibold text-[rgb(var(--nefera-muted))]">{child?.grade ?? ''}</div>
+                  </div>
+                </CardBody>
+              </Card>
+
+              <Card className="space-y-4">
+                <CardHeader emoji="⚡" title="Quick actions" subtitle="Small steps at home and school." />
+                <CardBody className="space-y-4">
+                  <div className="space-y-3">
+                    <Section title="At home" />
+                    <Link to="/parent/checklist">
+                      <Button>Home checklist ✅</Button>
+                    </Link>
+                  </div>
+                  <Divider />
+                  <div className="space-y-3">
+                    <Section title="Contact school" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canMessageSchool ? (
+                        <Link to="/parent/message">
+                          <Button variant="secondary">Message school 💌</Button>
+                        </Link>
+                      ) : null}
+                      {canReportIncident ? (
+                        <Link to="/parent/report-incident">
+                          <Button variant="secondary">Report incident 🛡️</Button>
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card className="space-y-4">
+                <CardHeader emoji="📊" title="Emotions (last 7 days)" subtitle="Aggregated percentages from daily check-ins." />
+                <CardBody className="space-y-4">
+                  {emotionPcts.total ? (
+                    <div className="space-y-4">
+                      {(['happy', 'neutral', 'flat', 'worried', 'sad'] as Feeling[]).map((f) => {
+                        const pct = emotionPcts.pctByFeeling[f]
+                        return (
+                          <div key={f} className="space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-[rgb(var(--nefera-muted))]">{feelingLabel(f)}</div>
+                              <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{pct}%</div>
+                            </div>
+                            <ProgressBar value={pct} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                      <div className="text-sm text-[rgb(var(--nefera-muted))]">No check-ins yet.</div>
+                      <div className="mt-3">
+                        <Link to="/parent/message">
+                          <Button variant="secondary">Message school 💌</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+
+              <Card className="space-y-4">
+                <CardHeader emoji="📝" title="Today" subtitle="Simple daily indicators." />
+                <CardBody className="space-y-4">
+                  <div className="grid gap-2">
+                    <div className="rounded-3xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4">
+                      <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Journal today</div>
+                      <div className="mt-1 text-2xl font-extrabold text-[rgb(var(--nefera-ink))]">{journalToday ? 'Yes' : 'No'}</div>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+
+            {canMessageSchool ? (
+              <Card className="space-y-4">
+                <CardHeader
+                  emoji="📨"
+                  title="Recent messages"
+                  subtitle="Messages you’ve sent to school."
+                  right={
+                    <Link to="/parent/message">
+                      <Button size="sm" variant="secondary">
+                        Message school
+                      </Button>
+                    </Link>
+                  }
+                />
+                <CardBody className="space-y-4">
+                  <div className="grid gap-2">
+                    {state.parent.sent.slice(0, 4).map((m) => (
+                      <div
+                        key={m.id}
+                        className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 py-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5"
+                      >
+                        <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(m.createdAt)}</div>
+                        <div className="mt-1 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">{m.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {state.parent.sent.length === 0 ? (
+                    <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                      <div className="text-sm text-[rgb(var(--nefera-muted))]">
+                        No messages yet. If you notice changes at home, a short note can help the school respond early.
+                      </div>
+                      <div className="mt-3">
+                        <Link to="/parent/message">
+                          <Button variant="secondary">Message school</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardBody>
+              </Card>
+            ) : null}
+          </div>
+        )
+      )}
+    </Page>
+  )
+}
+
+function AdminDashboard() {
+  const { state } = useNefera()
+  const pending = state.schoolConfigRequests.filter((r) => r.status === 'pending')
+  return (
+    <Page emoji="🛠️" title="Admin" subtitle="Review requests and manage configuration.">
+      <div className="space-y-6">
+        <Card className="space-y-4">
+          <CardHeader
+            emoji="🧾"
+            title="Pending requests"
+            subtitle="School config requests awaiting review."
+            right={
+              <Link to="/admin/config">
+                <Button size="sm">Request change</Button>
+              </Link>
+            }
+          />
+          <CardBody className="space-y-4">
+            <div className="grid gap-2">
+              {pending.slice(0, 8).map((r) => (
+                <div key={r.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{r.requestedBy.name}</div>
+                    <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{r.status}</div>
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
+                </div>
+              ))}
+            </div>
+            {pending.length === 0 ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 py-4">
+                <div className="text-sm text-[rgb(var(--nefera-muted))]">No pending requests.</div>
+                <div className="mt-3">
+                  <Link to="/admin/config">
+                    <Button variant="secondary">Request change</Button>
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
+
+        <Card className="space-y-4">
+          <CardHeader emoji="⚙️" title="Current configuration" subtitle="Read-only snapshot of active settings." />
+          <CardBody className="space-y-4">
+            <div className="space-y-3">
+              <Section title="Features" />
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">
+                Open Circle: {state.schoolConfig.features.openCircle ? 'Enabled' : 'Disabled'} • Reports: {state.schoolConfig.features.reports ? 'Enabled' : 'Disabled'} • Messaging:{' '}
+                {state.schoolConfig.features.messaging ? 'Enabled' : 'Disabled'} • Coping tools: {state.schoolConfig.features.copingTools ? 'Enabled' : 'Disabled'} • Parent dashboard:{' '}
+                {state.schoolConfig.features.parentDashboard ? 'Enabled' : 'Disabled'}
+              </div>
+            </div>
+            <Divider />
+            <div className="space-y-3">
+              <Section title="Open Circle" />
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">Visibility: {state.schoolConfig.openCircle.visibility}</div>
+            </div>
+            <Divider />
+            <div className="space-y-3">
+              <Section title="Parent limits" />
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">
+                Max grade: {state.schoolConfig.parent.maxGrade} • Allow beyond max: {state.schoolConfig.parent.allowBeyondMax ? 'Yes' : 'No'}
+              </div>
+            </div>
+            <Divider />
+            <div className="space-y-3">
+              <Section title="Emergency contact" />
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">
+                {state.schoolConfig.emergencyContact.title} • {state.schoolConfig.emergencyContact.phone} • {state.schoolConfig.emergencyContact.email}
+              </div>
+            </div>
           </CardBody>
         </Card>
       </div>
-      <Card className="mt-4">
-        <CardHeader emoji="📨" title="Recent messages" subtitle="Messages you’ve sent to school." />
-        <CardBody className="grid gap-2">
-          {state.parent.sent.slice(0, 4).map((m) => (
-            <div key={m.id} className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5">
-              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(m.createdAt)}</div>
-              <div className="mt-1 text-sm text-[rgb(var(--nefera-ink))] whitespace-pre-wrap">{m.body}</div>
+    </Page>
+  )
+}
+
+function AdminConfig() {
+  const { state, dispatch } = useNefera()
+  const { user } = useAuth()
+  const [draft, setDraft] = useState(() => state.schoolConfig)
+  const [toast, setToast] = useState(false)
+
+  const boolOptions = [
+    { value: 'on', label: 'Enabled' },
+    { value: 'off', label: 'Disabled' },
+  ]
+
+  const yesNoOptions = [
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+  ]
+
+  function submit() {
+    dispatch({
+      type: 'admin/requestSchoolConfigChange',
+      request: {
+        id: makeId('cfg_req'),
+        createdAt: new Date().toISOString(),
+        requestedBy: { role: 'admin', name: user?.name ?? 'Admin' },
+        config: draft,
+        status: 'pending',
+      },
+    })
+    setToast(true)
+  }
+
+  return (
+    <Page emoji="⚙️" title="Config request" subtitle="Prepare a school configuration change request.">
+      <div className="space-y-6">
+        <Card className="space-y-4">
+        <CardBody className="space-y-4">
+          <div className="space-y-3">
+            <Section title="Features" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Select
+                label="Open Circle"
+                value={draft.features.openCircle ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, features: { ...d.features, openCircle: v === 'on' } }))}
+                options={boolOptions}
+              />
+              <Select
+                label="Reports"
+                value={draft.features.reports ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, features: { ...d.features, reports: v === 'on' } }))}
+                options={boolOptions}
+              />
+              <Select
+                label="Messaging"
+                value={draft.features.messaging ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, features: { ...d.features, messaging: v === 'on' } }))}
+                options={boolOptions}
+              />
+              <Select
+                label="Coping tools"
+                value={draft.features.copingTools ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, features: { ...d.features, copingTools: v === 'on' } }))}
+                options={boolOptions}
+              />
+              <Select
+                label="Parent dashboard"
+                value={draft.features.parentDashboard ? 'on' : 'off'}
+                onChange={(v) => setDraft((d) => ({ ...d, features: { ...d.features, parentDashboard: v === 'on' } }))}
+                options={boolOptions}
+              />
             </div>
-          ))}
-          {state.parent.sent.length === 0 ? (
-            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
-              No messages yet. If you notice changes at home, a short note can help the school respond early.
+          </div>
+
+          <Divider />
+          <div className="space-y-3">
+            <Section title="Open Circle" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Select
+                label="Visibility"
+                value={draft.openCircle.visibility}
+                onChange={(v) => setDraft((d) => ({ ...d, openCircle: { ...d.openCircle, visibility: v as 'off' | 'school' | 'class' | 'grade' | 'groups' } }))}
+                options={[
+                  { value: 'off', label: 'off' },
+                  { value: 'school', label: 'school' },
+                  { value: 'class', label: 'class' },
+                  { value: 'grade', label: 'grade' },
+                  { value: 'groups', label: 'groups' },
+                ]}
+              />
+              <Input
+                label="Allowed class IDs (comma separated)"
+                value={draft.openCircle.allowedClassIds.join(', ')}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    openCircle: { ...d.openCircle, allowedClassIds: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) },
+                  }))
+                }
+              />
+              <Input
+                label="Allowed grades (comma separated)"
+                value={draft.openCircle.allowedGrades.join(', ')}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    openCircle: { ...d.openCircle, allowedGrades: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) },
+                  }))
+                }
+              />
+              <Input
+                label="Allowed group IDs (comma separated)"
+                value={draft.openCircle.allowedGroupIds.join(', ')}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    openCircle: { ...d.openCircle, allowedGroupIds: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) },
+                  }))
+                }
+              />
             </div>
-          ) : null}
+          </div>
+
+          <Divider />
+          <div className="space-y-3">
+            <Section title="Parent limits" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                label="Max grade"
+                inputMode="numeric"
+                value={String(draft.parent.maxGrade)}
+                onChange={(e) => {
+                  const text = e.target.value.trim()
+                  if (!text) return
+                  const n = Number(text)
+                  if (!Number.isFinite(n)) return
+                  setDraft((d) => ({ ...d, parent: { ...d.parent, maxGrade: n } }))
+                }}
+              />
+              <Select
+                label="Allow beyond max"
+                value={draft.parent.allowBeyondMax ? 'yes' : 'no'}
+                onChange={(v) => setDraft((d) => ({ ...d, parent: { ...d.parent, allowBeyondMax: v === 'yes' } }))}
+                options={yesNoOptions}
+              />
+            </div>
+          </div>
+
+          <Divider />
+          <div className="space-y-3">
+            <Section title="Emergency contact" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                label="Title"
+                value={draft.emergencyContact.title}
+                onChange={(e) => setDraft((d) => ({ ...d, emergencyContact: { ...d.emergencyContact, title: e.target.value } }))}
+              />
+              <Input
+                label="Phone"
+                value={draft.emergencyContact.phone}
+                onChange={(e) => setDraft((d) => ({ ...d, emergencyContact: { ...d.emergencyContact, phone: e.target.value } }))}
+              />
+              <Input
+                label="Email"
+                value={draft.emergencyContact.email}
+                onChange={(e) => setDraft((d) => ({ ...d, emergencyContact: { ...d.emergencyContact, email: e.target.value } }))}
+              />
+            </div>
+          </div>
+
+          <Divider />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link to="/admin/dashboard">
+              <Button variant="ghost">Cancel</Button>
+            </Link>
+            <Button onClick={submit}>Submit request</Button>
+          </div>
         </CardBody>
-      </Card>
+        </Card>
+      </div>
+      <Toast open={toast} tone="ok" message="Request submitted." onClose={() => setToast(false)} />
+    </Page>
+  )
+}
+
+function AdminProfile() {
+  const { user } = useAuth()
+  return (
+    <Page emoji="🙋" title="Profile" subtitle="Your account details.">
+      <div className="space-y-6">
+        <Card className="space-y-4">
+          <CardBody className="space-y-4">
+            <div className="space-y-3">
+              <Section title="Name" />
+              <div className="text-lg font-extrabold text-[rgb(var(--nefera-ink))]">{user?.name ?? ''}</div>
+            </div>
+            <Divider />
+            <div className="space-y-3">
+              <Section title="Role" />
+              <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{user?.role.toUpperCase()}</div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    </Page>
+  )
+}
+
+function PrincipalAdminApprovals() {
+  const { state, dispatch } = useNefera()
+  const requests = state.schoolConfigRequests
+  return (
+    <Page emoji="✅" title="Approvals" subtitle="Review and approve pending configuration requests.">
+      <div className="space-y-6">
+        {requests.map((r) => (
+          <Card key={r.id} className="space-y-4">
+            <CardHeader
+              emoji="🧾"
+              title={r.requestedBy.name}
+              subtitle={`${formatShort(r.createdAt)} • ${r.status}`}
+              right={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="ghost" disabled={r.status !== 'pending'} onClick={() => dispatch({ type: 'principal/rejectSchoolConfigChange', requestId: r.id })}>
+                    Reject
+                  </Button>
+                  <Button variant="secondary" disabled={r.status !== 'pending'} onClick={() => dispatch({ type: 'principal/approveSchoolConfigChange', requestId: r.id })}>
+                    Approve
+                  </Button>
+                </div>
+              }
+            />
+            <CardBody className="space-y-4">
+              <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">
+                Requested by {r.requestedBy.role.toUpperCase()} • Open Circle: {r.config.features.openCircle ? 'Enabled' : 'Disabled'} • Reports:{' '}
+                {r.config.features.reports ? 'Enabled' : 'Disabled'} • Messaging: {r.config.features.messaging ? 'Enabled' : 'Disabled'} • Parent dashboard:{' '}
+                {r.config.features.parentDashboard ? 'Enabled' : 'Disabled'} • Parent max grade: {r.config.parent.maxGrade} • Allow beyond max:{' '}
+                {r.config.parent.allowBeyondMax ? 'Yes' : 'No'}
+              </div>
+            </CardBody>
+          </Card>
+        ))}
+        {requests.length === 0 ? (
+          <Card className="space-y-4">
+            <CardHeader emoji="🌿" title="No requests yet" subtitle="Requests will appear here as admins submit them." />
+            <CardBody className="space-y-4">
+              <div className="text-sm text-[rgb(var(--nefera-muted))]">This page helps leadership approve or reject configuration changes.</div>
+              <Link to="/principal/dashboard">
+                <Button variant="secondary">Back</Button>
+              </Link>
+            </CardBody>
+          </Card>
+        ) : null}
+      </div>
     </Page>
   )
 }
 
 function ParentMessage() {
-  const { dispatch } = useNefera()
+  const { state, dispatch } = useNefera()
   const navigate = useNavigate()
+  const [toRole, setToRole] = useState<'teacher' | 'counselor' | 'principal'>('counselor')
   const [body, setBody] = useState('')
   const [toast, setToast] = useState(false)
   const canSend = !!body.trim()
+  const canMessageSchool = state.schoolConfig.features.messaging
+
+  if (!canMessageSchool) {
+    return (
+      <Page emoji="💌" title="Message school" subtitle="Share what you’re noticing at home.">
+        <Card>
+          <CardHeader emoji="🔒" title="Messaging is unavailable" subtitle="Your school has disabled messaging right now." />
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">You can still use other tools like the home checklist.</div>
+            <Button size="sm" variant="secondary" onClick={() => navigate('/parent/dashboard', { replace: true })}>
+              Back
+            </Button>
+          </CardBody>
+        </Card>
+      </Page>
+    )
+  }
 
   function onSend() {
     const createdAt = new Date().toISOString()
-    dispatch({ type: 'parent/sendMessage', item: { id: makeId('p_msg'), createdAt, toChildId: 'stu_1', body: body.trim() } })
+    const childId = state.parent.children[0]?.id ?? 'stu_1'
+    dispatch({ type: 'parent/sendMessage', item: { id: makeId('p_msg'), createdAt, toRole, childId, body: body.trim() } })
     setToast(true)
     window.setTimeout(() => navigate('/parent/dashboard', { replace: true }), 250)
   }
 
   return (
     <Page emoji="💌" title="Message school" subtitle="Share what you’re noticing at home.">
-      <Card>
-        <CardBody className="space-y-3">
-          <TextArea label="Message" value={body} onChange={(e) => setBody(e.target.value)} inputClassName="min-h-48" />
-          <Divider />
-          <div className="hidden justify-end gap-2 md:flex">
-            <Button variant="ghost" onClick={() => navigate('/parent/dashboard')}>
-              Cancel
-            </Button>
-            <Button disabled={!canSend} onClick={onSend}>
-              Send
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardBody className="space-y-4">
+            <Select
+              label="Send to"
+              value={toRole}
+              onChange={(v) => setToRole(v as 'teacher' | 'counselor' | 'principal')}
+              options={[
+                { value: 'teacher', label: 'Teacher' },
+                { value: 'counselor', label: 'Counselor' },
+                { value: 'principal', label: 'Principal' },
+              ]}
+            />
+            <TextArea label="Message" value={body} onChange={(e) => setBody(e.target.value)} inputClassName="min-h-48" />
+            <Divider />
+            <div className="hidden justify-end gap-2 md:flex">
+              <Button variant="ghost" onClick={() => navigate('/parent/dashboard')}>
+                Cancel
+              </Button>
+              <Button disabled={!canSend} onClick={onSend}>
+                Send
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
       <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 md:hidden">
         <div className="mx-auto w-full max-w-[480px] px-3">
           <div className="border-t border-[rgb(var(--nefera-border))] bg-white px-3 py-3">
@@ -2793,6 +3480,7 @@ function ParentMessage() {
 
 function ParentReportIncident() {
   const { state, dispatch } = useNefera()
+  const navigate = useNavigate()
   const [type, setType] = useState('Bullying / Harassment')
   const [desc, setDesc] = useState('')
   const [confirm, setConfirm] = useState(false)
@@ -2801,6 +3489,21 @@ function ParentReportIncident() {
   const canSubmit = !!desc.trim()
   const reportHint = useFirstVisitHint('nefera_hint_parent_report_incident_v1')
   const childId = state.parent.children[0]?.id ?? 'stu_1'
+  if (!state.schoolConfig.features.reports) {
+    return (
+      <Page emoji="🛡️" title="Report incident" subtitle="Share what you noticed. This will be sent to school staff.">
+        <Card>
+          <CardHeader emoji="🔒" title="Reporting is unavailable" subtitle="Your school has disabled reports right now." />
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm leading-6 text-[rgb(var(--nefera-muted))]">If you’re concerned about safety, reach out to a trusted adult or emergency services.</div>
+            <Button size="sm" variant="secondary" onClick={() => navigate('/parent/dashboard', { replace: true })}>
+              Back
+            </Button>
+          </CardBody>
+        </Card>
+      </Page>
+    )
+  }
   return (
     <Page emoji="🛡️" title="Report incident" subtitle="Share what you noticed. This will be sent to school staff.">
       {submitted ? (
@@ -2952,160 +3655,176 @@ function CounselorDashboard() {
 
   return (
     <Page emoji="🧠" title={`Welcome, ${user?.name ?? 'Counselor'}`} subtitle="Prioritize support, follow up, and document care.">
-      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+      <div className="space-y-4">
+        <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+          <Card>
+            <CardHeader emoji="🚩" title="Flags" subtitle="Students needing follow-up." />
+            <CardBody className="grid gap-4 md:grid-cols-2">
+              <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
+              <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
+              <StatPill emoji="🛟" label="Crisis" value={`${crisis}`} />
+              <StatPill emoji="🗂️" label="Actions" value={`${state.counselor.crisisActions.filter((a) => !a.done).length}`} />
+              <StatPill emoji="🫂" label="Peer notes" value={`${peerObs.length}`} />
+              <StatPill emoji="🆘" label="Risk signals" value={`${peerRiskSignals}`} />
+              <StatPill emoji="🧑‍🏫" label="Teacher obs" value={`${teacherObs.length}`} />
+              <StatPill emoji="🧾" label="Reports" value={`${reports.length}`} />
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader emoji="⚡" title="Quick actions" subtitle="Keep communication clear and calm." />
+            <CardBody className="flex flex-wrap items-center gap-2">
+              <Link to="/counselor/flags">
+                <Button>View flags 🚩</Button>
+              </Link>
+              <Link to="/counselor/reports">
+                <Button variant="secondary">Reports 🧾</Button>
+              </Link>
+              <Link to="/counselor/students">
+                <Button variant="secondary">All students 🧑‍🎓</Button>
+              </Link>
+              <Link to="/counselor/assessments/phq9">
+                <Button variant="secondary">PHQ-9 📋</Button>
+              </Link>
+              <Link to="/counselor/assessments/gad7">
+                <Button variant="secondary">GAD-7 🧭</Button>
+              </Link>
+              <Link to="/counselor/assessments/cssrs">
+                <Button variant="secondary">C-SSRS 🛟</Button>
+              </Link>
+              <Link to="/counselor/crisis-actions">
+                <Button variant="secondary">Crisis actions 🧾</Button>
+              </Link>
+              <Link to="/counselor/broadcast">
+                <Button variant="secondary">Broadcast 📣</Button>
+              </Link>
+            </CardBody>
+          </Card>
+        </div>
+
         <Card>
-          <CardHeader emoji="🚩" title="Flags" subtitle="Students needing follow-up." />
-          <CardBody className="grid gap-3 md:grid-cols-2">
-            <StatPill emoji="🧑‍🎓" label="Students" value={`${students.length}`} />
-            <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
-            <StatPill emoji="🛟" label="Crisis" value={`${crisis}`} />
-            <StatPill emoji="🗂️" label="Actions" value={`${state.counselor.crisisActions.filter((a) => !a.done).length}`} />
-            <StatPill emoji="🫂" label="Peer notes" value={`${peerObs.length}`} />
-            <StatPill emoji="🆘" label="Risk signals" value={`${peerRiskSignals}`} />
-            <StatPill emoji="🧑‍🏫" label="Teacher obs" value={`${teacherObs.length}`} />
-            <StatPill emoji="🧾" label="Reports" value={`${reports.length}`} />
+          <CardHeader emoji="💛" title="Student check-ins" subtitle="Signals from the last 7 days." />
+          <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
+            <div className="space-y-3">
+              <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+                <DonutChart size={168} stroke={18} segments={weeklySegments} />
+              </div>
+              <ChartLegend segments={weeklySegments} />
+            </div>
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
+              <div className="flex flex-wrap gap-2">
+                {signals.themes.map((t) => (
+                  <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
+                ))}
+                {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
+                {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
+              </div>
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
+              <div className="flex flex-wrap gap-2">
+                {signals.patterns.map((p) => (
+                  <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
+                ))}
+                {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
+                {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
+              </div>
+            </div>
           </CardBody>
         </Card>
+
         <Card>
-          <CardHeader emoji="⚡" title="Quick actions" subtitle="Keep communication clear and calm." />
-          <CardBody className="flex flex-wrap items-center gap-2">
-            <Link to="/counselor/flags">
-              <Button>View flags 🚩</Button>
-            </Link>
-            <Link to="/counselor/reports">
-              <Button variant="secondary">Reports 🧾</Button>
-            </Link>
-            <Link to="/counselor/students">
-              <Button variant="secondary">All students 🧑‍🎓</Button>
-            </Link>
-            <Link to="/counselor/assessments/phq9">
-              <Button variant="secondary">PHQ-9 📋</Button>
-            </Link>
-            <Link to="/counselor/assessments/gad7">
-              <Button variant="secondary">GAD-7 🧭</Button>
-            </Link>
-            <Link to="/counselor/assessments/cssrs">
-              <Button variant="secondary">C-SSRS 🛟</Button>
-            </Link>
-            <Link to="/counselor/crisis-actions">
-              <Button variant="secondary">Crisis actions 🧾</Button>
-            </Link>
-            <Link to="/counselor/broadcast">
-              <Button variant="secondary">Broadcast 📣</Button>
-            </Link>
-          </CardBody>
-        </Card>
-      </div>
-
-      <Card className="mt-4">
-        <CardHeader emoji="💛" title="Student check-ins" subtitle="Signals from the last 7 days." />
-        <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
-          <div className="space-y-3">
-            <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
-              <DonutChart size={168} stroke={18} segments={weeklySegments} />
-            </div>
-            <ChartLegend segments={weeklySegments} />
-          </div>
-          <div className="space-y-3">
-            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
-            <div className="flex flex-wrap gap-2">
-              {signals.themes.map((t) => (
-                <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
-              ))}
-              {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
-              {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
-            </div>
-            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
-            <div className="flex flex-wrap gap-2">
-              {signals.patterns.map((p) => (
-                <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
-              ))}
-              {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
-              {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader emoji="🧾" title="Crisis actions" subtitle="Track the steps you’ve taken." />
-        <CardBody className="grid gap-2">
-          {state.counselor.crisisActions.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => dispatch({ type: 'counselor/toggleCrisisAction', id: a.id })}
-              className={cx(
-                'flex items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-left shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/80 md:hover:shadow-xl md:hover:shadow-black/10',
-                a.done ? 'opacity-70' : '',
-              )}
-            >
-              <div className={cx('mt-0.5 grid h-6 w-6 place-items-center rounded-full border bg-white text-xs font-extrabold', a.done ? 'border-[rgba(34,197,94,0.30)]' : 'border-white/70')}>
-                {a.done ? '✓' : ''}
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">{a.body}</div>
-                <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(a.createdAt)}</div>
-              </div>
-            </button>
-          ))}
-        </CardBody>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader emoji="🫂" title="Peer observations" subtitle="Anonymous signals to support early identification." />
-        <CardBody className="grid gap-2">
-          {peerObs.slice(0, 6).map((o) => (
-            <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
-                  <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
-                    Anxiety {o.anxiety.length} • Depression {o.depression.length} • Risk {o.risk.length}
-                  </div>
+          <CardHeader emoji="🧾" title="Crisis actions" subtitle="Track the steps you’ve taken." />
+          <CardBody className="grid gap-2">
+            {state.counselor.crisisActions.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => dispatch({ type: 'counselor/toggleCrisisAction', id: a.id })}
+                className={cx(
+                  'flex items-start gap-3 rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 text-left shadow-none transition-all duration-200 ease-out active:translate-y-0 md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5 md:hover:-translate-y-0.5 md:hover:bg-white/80 md:hover:shadow-xl md:hover:shadow-black/10',
+                  a.done ? 'opacity-70' : '',
+                )}
+              >
+                <div className={cx('mt-0.5 grid h-6 w-6 place-items-center rounded-full border bg-white text-xs font-extrabold', a.done ? 'border-[rgba(34,197,94,0.30)]' : 'border-white/70')}>
+                  {a.done ? '✓' : ''}
                 </div>
-                {o.risk.length > 0 ? <Badge tone="danger">Risk</Badge> : <Badge tone="neutral">Info</Badge>}
-              </div>
-            </div>
-          ))}
-          {peerObs.length === 0 ? (
-            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
-              No peer observations yet.
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-[rgb(var(--nefera-ink))]">{a.body}</div>
+                  <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(a.createdAt)}</div>
+                </div>
+              </button>
+            ))}
+          </CardBody>
+        </Card>
 
-      <Card className="mt-4">
-        <CardHeader emoji="🧑‍🏫" title="Teacher observations" subtitle="Recent checklists shared for follow-up." />
-        <CardBody className="grid gap-2">
-          {teacherObs.slice(0, 6).map((o) => {
-            const student = students.find((s) => s.id === o.studentId)
-            const label = student ? `${student.name} • ${student.grade}` : `Student ${o.studentId}`
-            return (
+        <Card>
+          <CardHeader emoji="🫂" title="Peer observations" subtitle="Anonymous signals to support early identification." />
+          <CardBody className="grid gap-2">
+            {peerObs.slice(0, 6).map((o) => (
               <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
                     <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
-                      {label} • {o.items.length} item{o.items.length === 1 ? '' : 's'}
+                      Anxiety {o.anxiety.length} • Depression {o.depression.length} • Risk {o.risk.length}
                     </div>
                   </div>
-                  {o.items.length > 0 ? <Badge tone="warn">Observation</Badge> : <Badge tone="neutral">Info</Badge>}
+                  {o.risk.length > 0 ? <Badge tone="danger">Risk</Badge> : <Badge tone="neutral">Info</Badge>}
                 </div>
-                {o.items.length > 0 ? (
-                  <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{o.items.join('\n')}</div>
-                ) : null}
               </div>
-            )
-          })}
-          {teacherObs.length === 0 ? (
-            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
-              No teacher observations yet.
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
+            ))}
+            {peerObs.length === 0 ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+                <div>No peer observations yet.</div>
+                <div className="mt-3">
+                  <Link to="/counselor/students">
+                    <Button size="sm" variant="secondary">
+                      All students 🧑‍🎓
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader emoji="🧑‍🏫" title="Teacher observations" subtitle="Recent checklists shared for follow-up." />
+          <CardBody className="grid gap-2">
+            {teacherObs.slice(0, 6).map((o) => {
+              const student = students.find((s) => s.id === o.studentId)
+              const label = student ? `${student.name} • ${student.grade}` : `Student ${o.studentId}`
+              return (
+                <div key={o.id} className="rounded-2xl border border-white/70 bg-white/60 p-4 shadow-lg shadow-black/5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{formatShort(o.createdAt)}</div>
+                      <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">
+                        {label} • {o.items.length} item{o.items.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    {o.items.length > 0 ? <Badge tone="warn">Observation</Badge> : <Badge tone="neutral">Info</Badge>}
+                  </div>
+                  {o.items.length > 0 ? (
+                    <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{o.items.join('\n')}</div>
+                  ) : null}
+                </div>
+              )
+            })}
+            {teacherObs.length === 0 ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+                <div>No teacher observations yet.</div>
+                <div className="mt-3">
+                  <Link to="/counselor/students">
+                    <Button size="sm" variant="secondary">
+                      All students 🧑‍🎓
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
+      </div>
     </Page>
   )
 }
@@ -3307,79 +4026,88 @@ function PrincipalDashboard() {
 
   return (
     <Page emoji="🏫" title={`Welcome, ${user?.name ?? 'Principal'}`} subtitle="School-wide insight and reporting.">
-      <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+      <div className="space-y-4">
+        <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
+          <Card>
+            <CardHeader emoji="📈" title="Overview" subtitle="High-level signals for the week." />
+            <CardBody className="grid gap-4 md:grid-cols-2">
+              <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
+              <StatPill emoji="🛡️" label="Reports" value={`${reports.length}`} />
+              <StatPill emoji="🟢" label="Resolved" value={`${reports.filter((r) => r.status === 'resolved').length}`} />
+              <StatPill emoji="🟡" label="In review" value={`${reports.filter((r) => r.status !== 'resolved').length}`} />
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader emoji="⚡" title="Quick actions" subtitle="Communicate and review reports." />
+            <CardBody className="flex flex-wrap items-center gap-2">
+              <Link to="/principal/reports">
+                <Button>View reports 🧾</Button>
+              </Link>
+              <Link to="/principal/broadcast">
+                <Button variant="secondary">Broadcast 📣</Button>
+              </Link>
+            </CardBody>
+          </Card>
+        </div>
+
         <Card>
-          <CardHeader emoji="📈" title="Overview" subtitle="High-level signals for the week." />
-          <CardBody className="grid gap-3 md:grid-cols-2">
-            <StatPill emoji="🚩" label="Flagged" value={`${flagged}`} />
-            <StatPill emoji="🛡️" label="Reports" value={`${reports.length}`} />
-            <StatPill emoji="🟢" label="Resolved" value={`${reports.filter((r) => r.status === 'resolved').length}`} />
-            <StatPill emoji="🟡" label="In review" value={`${reports.filter((r) => r.status !== 'resolved').length}`} />
+          <CardHeader emoji="💛" title="Check-in signals" subtitle="Aggregate view from the last 7 days." />
+          <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
+            <div className="space-y-3">
+              <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
+                <DonutChart size={168} stroke={18} segments={weeklySegments} />
+              </div>
+              <ChartLegend segments={weeklySegments} />
+            </div>
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
+              <div className="flex flex-wrap gap-2">
+                {signals.themes.map((t) => (
+                  <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
+                ))}
+                {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
+                {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
+              </div>
+              <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
+              <div className="flex flex-wrap gap-2">
+                {signals.patterns.map((p) => (
+                  <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
+                ))}
+                {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
+                {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
+              </div>
+            </div>
           </CardBody>
         </Card>
+
         <Card>
-          <CardHeader emoji="⚡" title="Quick actions" subtitle="Communicate and review reports." />
-          <CardBody className="flex flex-wrap items-center gap-2">
-            <Link to="/principal/reports">
-              <Button>View reports 🧾</Button>
-            </Link>
-            <Link to="/principal/broadcast">
-              <Button variant="secondary">Broadcast 📣</Button>
-            </Link>
+          <CardHeader emoji="🛡️" title="Latest reports" subtitle="Newest items first." />
+          <CardBody className="grid gap-2">
+            {reports.slice(0, 6).map((r) => (
+              <div key={r.id} className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{r.type}</div>
+                  <Badge tone={r.status === 'resolved' ? 'ok' : r.status === 'reviewing' ? 'warn' : 'neutral'}>{r.status}</Badge>
+                </div>
+                <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
+                <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{r.description}</div>
+              </div>
+            ))}
+            {reports.length === 0 ? (
+              <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
+                <div>No reports yet.</div>
+                <div className="mt-3">
+                  <Link to="/principal/reports">
+                    <Button size="sm" variant="secondary">
+                      View reports 🧾
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : null}
           </CardBody>
         </Card>
       </div>
-
-      <Card className="mt-4">
-        <CardHeader emoji="💛" title="Check-in signals" subtitle="Aggregate view from the last 7 days." />
-        <CardBody className="grid gap-4 md:grid-cols-2 md:items-start">
-          <div className="space-y-3">
-            <div className="grid place-items-center rounded-2xl border border-white/70 bg-white/55 p-6 shadow-lg shadow-black/5">
-              <DonutChart size={168} stroke={18} segments={weeklySegments} />
-            </div>
-            <ChartLegend segments={weeklySegments} />
-          </div>
-          <div className="space-y-3">
-            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Themes</div>
-            <div className="flex flex-wrap gap-2">
-              {signals.themes.map((t) => (
-                <Badge key={t.label} tone={t.tone}>{t.label}</Badge>
-              ))}
-              {signals.themes.length === 0 && hasCheckInData ? <Badge tone="neutral">No themes detected</Badge> : null}
-              {!hasCheckInData ? <Badge tone="neutral">No check-ins yet</Badge> : null}
-            </div>
-            <div className="text-xs font-semibold text-[rgb(var(--nefera-muted))]">Patterns</div>
-            <div className="flex flex-wrap gap-2">
-              {signals.patterns.map((p) => (
-                <Badge key={p.label} tone={p.tone}>{p.label}</Badge>
-              ))}
-              {signals.patterns.length === 0 && hasCheckInData ? <Badge tone="neutral">No patterns detected</Badge> : null}
-              {!hasCheckInData ? <Badge tone="neutral">No sleep logs yet</Badge> : null}
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader emoji="🛡️" title="Latest reports" subtitle="Newest items first." />
-        <CardBody className="grid gap-2">
-          {reports.slice(0, 6).map((r) => (
-            <div key={r.id} className="rounded-2xl border border-[rgb(var(--nefera-border))] bg-white p-4 shadow-none md:border-white/70 md:bg-white/60 md:shadow-lg md:shadow-black/5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-extrabold text-[rgb(var(--nefera-ink))]">{r.type}</div>
-                <Badge tone={r.status === 'resolved' ? 'ok' : r.status === 'reviewing' ? 'warn' : 'neutral'}>{r.status}</Badge>
-              </div>
-              <div className="mt-1 text-xs font-semibold text-[rgb(var(--nefera-muted))]">{formatShort(r.createdAt)}</div>
-              <div className="mt-2 text-sm text-[rgb(var(--nefera-muted))] whitespace-pre-wrap">{r.description}</div>
-            </div>
-          ))}
-          {reports.length === 0 ? (
-            <div className="rounded-2xl border border-white/70 bg-white/60 p-4 text-sm text-[rgb(var(--nefera-muted))]">
-              No reports yet.
-            </div>
-          ) : null}
-        </CardBody>
-      </Card>
     </Page>
   )
 }
@@ -3482,6 +4210,14 @@ function LazyBoundary({ children }: { children: React.ReactNode }) {
 }
 
 export function NeferaRoutes() {
+  const { state } = useNefera()
+  const parentDefaultPath = state.schoolConfig.features.parentDashboard
+    ? '/parent/dashboard'
+    : state.schoolConfig.features.messaging
+      ? '/parent/message'
+      : state.schoolConfig.features.reports
+        ? '/parent/report-incident'
+        : '/parent/profile'
   return (
     <Routes>
       <Route path="/" element={<RoleEntry />} />
@@ -3500,6 +4236,7 @@ export function NeferaRoutes() {
         <Route path="/student/dashboard" element={<RequireAuth role="student"><StudentDashboard /></RequireAuth>} />
         <Route path="/student/check-in" element={<RequireAuth role="student"><StudentCheckInEntry /></RequireAuth>} />
         <Route path="/student/check-in/:feeling" element={<RequireAuth role="student"><StudentCheckInFlow /></RequireAuth>} />
+        <Route path="/student/coping" element={<RequireAuth role="student"><StudentCopingTools /></RequireAuth>} />
         <Route path="/student/sleep" element={<RequireAuth role="student"><StudentSleepTracker /></RequireAuth>} />
 
         <Route path="/student/journal/write" element={<RequireAuth role="student"><StudentJournalWrite /></RequireAuth>} />
@@ -3524,8 +4261,15 @@ export function NeferaRoutes() {
         <Route path="/teacher/students/:id" element={<RequireAuth role="teacher"><TeacherObservationChecklist /></RequireAuth>} />
         <Route path="/teacher/profile" element={<RequireAuth role="teacher"><TeacherProfile /></RequireAuth>} />
 
-        <Route path="/parent" element={<RequireAuth role="parent"><Navigate to="/parent/dashboard" replace /></RequireAuth>} />
-        <Route path="/parent/dashboard" element={<RequireAuth role="parent"><ParentDashboard /></RequireAuth>} />
+        <Route path="/parent" element={<RequireAuth role="parent"><Navigate to={parentDefaultPath} replace /></RequireAuth>} />
+        <Route
+          path="/parent/dashboard"
+          element={
+            <RequireAuth role="parent">
+              {state.schoolConfig.features.parentDashboard ? <ParentDashboard /> : <Navigate to={parentDefaultPath} replace />}
+            </RequireAuth>
+          }
+        />
         <Route path="/parent/message" element={<RequireAuth role="parent"><ParentMessage /></RequireAuth>} />
         <Route path="/parent/checklist" element={<RequireAuth role="parent"><ParentObservationChecklist /></RequireAuth>} />
         <Route path="/parent/report-incident" element={<RequireAuth role="parent"><ParentReportIncident /></RequireAuth>} />
@@ -3547,8 +4291,14 @@ export function NeferaRoutes() {
         <Route path="/principal" element={<RequireAuth role="principal"><Navigate to="/principal/dashboard" replace /></RequireAuth>} />
         <Route path="/principal/dashboard" element={<RequireAuth role="principal"><PrincipalDashboard /></RequireAuth>} />
         <Route path="/principal/reports" element={<RequireAuth role="principal"><LazyBoundary><LazyPrincipalReports /></LazyBoundary></RequireAuth>} />
+        <Route path="/principal/admin-approvals" element={<RequireAuth role="principal"><PrincipalAdminApprovals /></RequireAuth>} />
         <Route path="/principal/broadcast" element={<RequireAuth role="principal"><PrincipalBroadcast /></RequireAuth>} />
         <Route path="/principal/profile" element={<RequireAuth role="principal"><PrincipalProfile /></RequireAuth>} />
+
+        <Route path="/admin" element={<RequireAuth role="admin"><Navigate to="/admin/dashboard" replace /></RequireAuth>} />
+        <Route path="/admin/dashboard" element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>} />
+        <Route path="/admin/config" element={<RequireAuth role="admin"><AdminConfig /></RequireAuth>} />
+        <Route path="/admin/profile" element={<RequireAuth role="admin"><AdminProfile /></RequireAuth>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/welcome" replace />} />

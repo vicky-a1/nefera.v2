@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 
-export type Role = 'student' | 'teacher' | 'parent' | 'counselor' | 'principal'
+export type Role = 'student' | 'teacher' | 'parent' | 'counselor' | 'principal' | 'admin'
 export type AgeGroup = '6-10' | '11-17'
 export type Feeling = 'happy' | 'neutral' | 'flat' | 'worried' | 'sad'
 
@@ -82,6 +82,7 @@ export type Message = {
   fromRole: Role
   fromName: string
   toRole: Role
+  toStudentId?: string
   subject: string
   body: string
   readAt?: string
@@ -151,9 +152,49 @@ export type SafetyEvent = {
   shownSuggestions: string[]
 }
 
+export type SchoolConfig = {
+  openCircle: {
+    visibility: 'off' | 'school' | 'class' | 'grade' | 'groups'
+    allowedClassIds: string[]
+    allowedGrades: string[]
+    allowedGroupIds: string[]
+  }
+  parent: {
+    maxGrade: number
+    allowBeyondMax: boolean
+  }
+  positiveMessage: {
+    enabled: boolean
+    maxWords: number
+    text: string
+  }
+  features: {
+    openCircle: boolean
+    reports: boolean
+    messaging: boolean
+    copingTools: boolean
+    parentDashboard: boolean
+  }
+  emergencyContact: {
+    title: string
+    phone: string
+    email: string
+  }
+}
+
+export type SchoolConfigRequest = {
+  id: string
+  createdAt: string
+  requestedBy: { role: Role; name: string }
+  config: SchoolConfig
+  status: 'pending' | 'approved' | 'rejected'
+}
+
 export type NeferaState = {
   selectedRole?: Role
   user?: User
+  schoolConfig: SchoolConfig
+  schoolConfigRequests: SchoolConfigRequest[]
 
   student: {
     ageGroup?: AgeGroup
@@ -181,12 +222,13 @@ export type NeferaState = {
     classes: { id: string; name: string; studentIds: string[] }[]
     students: StudentRecord[]
     broadcasts: { id: string; createdAt: string; title: string; body: string }[]
+    inbox: Message[]
     observations: TeacherObservation[]
   }
 
   parent: {
     children: { id: string; name: string; grade: string }[]
-    sent: { id: string; createdAt: string; toChildId: string; body: string }[]
+    sent: { id: string; createdAt: string; toRole: 'teacher' | 'counselor' | 'principal'; childId: string; body: string }[]
     reports: { id: string; createdAt: string; type: string; body: string }[]
   }
 
@@ -195,6 +237,7 @@ export type NeferaState = {
     broadcasts: { id: string; createdAt: string; title: string; body: string }[]
     crisisActions: { id: string; createdAt: string; body: string; done: boolean }[]
     safetyEvents: SafetyEvent[]
+    inbox: Message[]
     peerObservations: PeerObservation[]
     teacherObservations: TeacherObservation[]
     checkIns: StudentCheckIn[]
@@ -204,6 +247,7 @@ export type NeferaState = {
 
   principal: {
     broadcasts: { id: string; createdAt: string; title: string; body: string }[]
+    inbox: Message[]
     checkIns: StudentCheckIn[]
     sleepLogs: NeferaState['student']['sleepLogs']
     reports: IncidentReport[]
@@ -214,6 +258,9 @@ type Action =
   | { type: 'selectRole'; role: Role }
   | { type: 'login'; name: string }
   | { type: 'logout' }
+  | { type: 'admin/requestSchoolConfigChange'; request: SchoolConfigRequest }
+  | { type: 'principal/approveSchoolConfigChange'; requestId: string }
+  | { type: 'principal/rejectSchoolConfigChange'; requestId: string }
   | { type: 'student/setAgeGroup'; ageGroup: AgeGroup }
   | { type: 'student/addCheckIn'; checkIn: StudentCheckIn }
   | {
@@ -240,6 +287,7 @@ type Action =
   | { type: 'student/addHabit'; habit: Habit }
   | { type: 'student/toggleHabitToday'; habitId: string; isoDate: string }
   | { type: 'teacher/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
+  | { type: 'teacher/sendMessage'; item: { id: string; createdAt: string; toStudentId: string; subject: string; body: string } }
   | { type: 'teacher/addObservation'; observation: TeacherObservation }
   | { type: 'teacher/setStudentFlags'; studentId: string; flags: StudentRecord['flags'] }
   | { type: 'counselor/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
@@ -248,7 +296,7 @@ type Action =
   | { type: 'counselor/saveCssrs'; studentId: string; answers: boolean[]; createdAt: string }
   | { type: 'counselor/addSafetyEvent'; event: SafetyEvent }
   | { type: 'counselor/toggleCrisisAction'; id: string }
-  | { type: 'parent/sendMessage'; item: { id: string; createdAt: string; toChildId: string; body: string } }
+  | { type: 'parent/sendMessage'; item: { id: string; createdAt: string; toRole: 'teacher' | 'counselor' | 'principal'; childId: string; body: string } }
   | { type: 'parent/addReport'; item: { id: string; createdAt: string; type: string; body: string; childId: string } }
   | { type: 'principal/addBroadcast'; item: { id: string; createdAt: string; title: string; body: string } }
   | { type: 'principal/addReport'; report: IncidentReport }
@@ -272,6 +320,12 @@ function loadState(): NeferaState | undefined {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as NeferaState
+    if (!('schoolConfig' in parsed)) {
+      ;(parsed as NeferaState).schoolConfig = defaultSchoolConfig()
+    }
+    if (!('schoolConfigRequests' in parsed)) {
+      ;(parsed as NeferaState).schoolConfigRequests = []
+    }
     const student = parsed.student
     if (student && !('peerObservations' in student)) {
       ;(parsed.student as NeferaState['student']).peerObservations = []
@@ -295,6 +349,9 @@ function loadState(): NeferaState | undefined {
     if (counselor && !('reports' in counselor)) {
       ;(parsed.counselor as NeferaState['counselor']).reports = []
     }
+    if (counselor && !('inbox' in counselor)) {
+      ;(parsed.counselor as NeferaState['counselor']).inbox = []
+    }
     const principal = parsed.principal
     if (principal && !('checkIns' in principal)) {
       ;(parsed.principal as NeferaState['principal']).checkIns = []
@@ -302,9 +359,34 @@ function loadState(): NeferaState | undefined {
     if (principal && !('sleepLogs' in principal)) {
       ;(parsed.principal as NeferaState['principal']).sleepLogs = []
     }
+    if (principal && !('inbox' in principal)) {
+      ;(parsed.principal as NeferaState['principal']).inbox = []
+    }
     const teacher = parsed.teacher
     if (teacher && !('observations' in teacher)) {
       ;(parsed.teacher as NeferaState['teacher']).observations = []
+    }
+    if (teacher && !('inbox' in teacher)) {
+      ;(parsed.teacher as NeferaState['teacher']).inbox = []
+    }
+    const parent = parsed.parent
+    const parentSent =
+      parent && typeof parent === 'object' && 'sent' in parent ? (parent as { sent?: unknown }).sent : undefined
+    if (Array.isArray(parentSent)) {
+      ;(parsed.parent as NeferaState['parent']).sent = parentSent.map((m) => {
+        const obj = m && typeof m === 'object' ? (m as Record<string, unknown>) : {}
+        const toRole = obj.toRole
+        const normalizedToRole = toRole === 'teacher' || toRole === 'counselor' || toRole === 'principal' ? toRole : 'counselor'
+        const childId =
+          typeof obj.childId === 'string' ? obj.childId : typeof obj.toChildId === 'string' ? obj.toChildId : 'stu_1'
+        return {
+          id: typeof obj.id === 'string' ? obj.id : uid('p_msg'),
+          createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString(),
+          toRole: normalizedToRole,
+          childId,
+          body: typeof obj.body === 'string' ? obj.body : '',
+        }
+      })
     }
     return parsed
   } catch {
@@ -354,6 +436,16 @@ export function feelingEmoji(feeling: Feeling) {
   }
 }
 
+function defaultSchoolConfig(): SchoolConfig {
+  return {
+    openCircle: { visibility: 'school', allowedClassIds: [], allowedGrades: [], allowedGroupIds: [] },
+    parent: { maxGrade: 7, allowBeyondMax: false },
+    positiveMessage: { enabled: true, maxWords: 22, text: 'You’re doing your best. One small step today is enough.' },
+    features: { openCircle: true, reports: true, messaging: true, copingTools: true, parentDashboard: true },
+    emergencyContact: { title: 'School emergency contact', phone: '+1 (000) 000-0000', email: 'help@school.org' },
+  }
+}
+
 function initialState(): NeferaState {
   const today = getTodayISO()
 
@@ -371,6 +463,7 @@ function initialState(): NeferaState {
       fromRole: 'teacher',
       fromName: 'Ms. Clara',
       toRole: 'student',
+      toStudentId: 'stu_1',
       subject: 'Proud of your effort',
       body: 'I noticed you stayed focused today. If anything feels heavy, you can always talk to me after class.',
     },
@@ -380,6 +473,7 @@ function initialState(): NeferaState {
       fromRole: 'counselor',
       fromName: 'Counselor Imani',
       toRole: 'student',
+      toStudentId: 'stu_1',
       subject: 'Check-in reminder',
       body: 'A gentle reminder: daily check-ins help you spot patterns. One minute is enough.',
     },
@@ -400,6 +494,8 @@ function initialState(): NeferaState {
   return {
     selectedRole: undefined,
     user: undefined,
+    schoolConfig: defaultSchoolConfig(),
+    schoolConfigRequests: [],
     student: {
       ageGroup: undefined,
       checkIns: [],
@@ -452,6 +548,7 @@ function initialState(): NeferaState {
       classes: [{ id: 'class_1', name: 'Grade 8A', studentIds: studentRecords.map((s) => s.id) }],
       students: studentRecords,
       broadcasts: [],
+      inbox: [],
       observations: [],
     },
     parent: {
@@ -468,6 +565,7 @@ function initialState(): NeferaState {
         { id: 'ca_3', createdAt: new Date().toISOString(), body: 'Coordinate with principal for supervision', done: false },
       ],
       safetyEvents: [],
+      inbox: [],
       peerObservations: [],
       teacherObservations: [],
       checkIns: [],
@@ -476,6 +574,7 @@ function initialState(): NeferaState {
     },
     principal: {
       broadcasts: [],
+      inbox: [],
       checkIns: [],
       sleepLogs: [],
       reports: seededIncidents,
@@ -493,6 +592,24 @@ function reducer(state: NeferaState, action: Action): NeferaState {
     }
     case 'logout':
       return { ...state, user: undefined }
+    case 'admin/requestSchoolConfigChange': {
+      const next = [action.request, ...state.schoolConfigRequests].slice(0, 25)
+      return { ...state, schoolConfigRequests: next }
+    }
+    case 'principal/approveSchoolConfigChange': {
+      const req = state.schoolConfigRequests.find((r) => r.id === action.requestId)
+      const schoolConfig = req?.config ?? state.schoolConfig
+      const schoolConfigRequests = state.schoolConfigRequests.map<SchoolConfigRequest>((r) =>
+        r.id === action.requestId ? { ...r, status: 'approved' } : r,
+      )
+      return { ...state, schoolConfig, schoolConfigRequests }
+    }
+    case 'principal/rejectSchoolConfigChange': {
+      const schoolConfigRequests = state.schoolConfigRequests.map<SchoolConfigRequest>((r) =>
+        r.id === action.requestId ? { ...r, status: 'rejected' } : r,
+      )
+      return { ...state, schoolConfigRequests }
+    }
     case 'student/setAgeGroup':
       return { ...state, student: { ...state.student, ageGroup: action.ageGroup } }
     case 'student/addCheckIn': {
@@ -597,10 +714,24 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         fromRole: 'teacher',
         fromName: state.user?.name ?? 'Teacher',
         toRole: 'student',
+        toStudentId: undefined,
         subject: action.item.title,
         body: action.item.body,
       }
       return { ...state, teacher: { ...state.teacher, broadcasts }, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
+    }
+    case 'teacher/sendMessage': {
+      const inboxItem: Message = {
+        id: action.item.id,
+        createdAt: action.item.createdAt,
+        fromRole: 'teacher',
+        fromName: state.user?.name ?? 'Teacher',
+        toRole: 'student',
+        toStudentId: action.item.toStudentId,
+        subject: action.item.subject,
+        body: action.item.body,
+      }
+      return { ...state, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
     }
     case 'teacher/addObservation': {
       const observations = [action.observation, ...state.teacher.observations].slice(0, 300)
@@ -624,6 +755,7 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         fromRole: 'counselor',
         fromName: state.user?.name ?? 'Counselor',
         toRole: 'student',
+        toStudentId: undefined,
         subject: action.item.title,
         body: action.item.body,
       }
@@ -656,11 +788,19 @@ function reducer(state: NeferaState, action: Action): NeferaState {
         createdAt: action.item.createdAt,
         fromRole: 'parent',
         fromName: state.user?.name ?? 'Parent',
-        toRole: 'student',
-        subject: 'Message from home',
+        toRole: action.item.toRole,
+        toStudentId: action.item.childId,
+        subject: 'Message from parent',
         body: action.item.body,
       }
-      return { ...state, parent: { ...state.parent, sent }, student: { ...state.student, inbox: [inboxItem, ...state.student.inbox] } }
+      const addInbox = (inbox: Message[]) => [inboxItem, ...inbox].slice(0, 250)
+      if (action.item.toRole === 'teacher') {
+        return { ...state, parent: { ...state.parent, sent }, teacher: { ...state.teacher, inbox: addInbox(state.teacher.inbox) } }
+      }
+      if (action.item.toRole === 'principal') {
+        return { ...state, parent: { ...state.parent, sent }, principal: { ...state.principal, inbox: addInbox(state.principal.inbox) } }
+      }
+      return { ...state, parent: { ...state.parent, sent }, counselor: { ...state.counselor, inbox: addInbox(state.counselor.inbox) } }
     }
     case 'parent/addReport': {
       const reports = [action.item, ...state.parent.reports].slice(0, 200)
